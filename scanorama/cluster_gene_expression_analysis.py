@@ -86,15 +86,16 @@ if __name__ == '__main__':
     parser.add_argument('-d', '--dimensions', type=int, help="in which scanorama folder should the script look for the initial dataframes?")
     parser.add_argument('-g', '--genes', type=int, default=50, help="at how many top-hit genes should it look?")
     parser.add_argument('-t', '--treshold', type=float, default=1, help="what is the treshold for hierarchical clustering")
+    parser.add_argument('--timestamp', type=str)
+    parser.add_argument("-o", "--output", type=str, help="output folder")
     args = parser.parse_args()
 
-    try:
-        os.chdir("/media/dropbox//MNM team folder/Spatial transcriptomics/Scanorama_mod/results/Union-True/DIMRED_" + str(args.dimensions))
-        print("Folder found")
-    except:
-        print("In ", os.getcwd())
+    output_folder = args.output + "/gene_distrubution_clusters_analysis" + str(args.timestamp)
+    os.mkdir(output_folder)
+    os.chdir(output_folder)
+
     # create joined dataframe and perform clustering
-    data, spots, gen_dim = create_stdata_dictionaries()
+    data, spots, gen_dim = create_stdata_dictionaries(csv_list="csv_files.txt", path="../scanorama_output_" + args.timestamp)
     CN = join_dataframe(data).iloc[:, 1:]
     ###
 
@@ -137,4 +138,4 @@ if __name__ == '__main__':
     plt.savefig("heatmap.png", bbox_inches='tight')
     plt.clf()
     x_top_df = x_top_genes(div_df, plot=True)
-    print(x_std_gene(div_df, plot=True))
+    # print(x_std_gene(div_df, plot=True))

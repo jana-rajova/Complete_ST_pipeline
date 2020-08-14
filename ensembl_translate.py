@@ -4,9 +4,9 @@ import os
 import re
 
 if __name__ == "__main__":
-	#parser = argparse.ArgumentParser(description="Translate Ensembl Ids to Gene Names for the following \\	species... All these species will be merged into a chimeric file") 
-	#parser.add_argument("-s",	"--species", type=str, help="R=Ratus Norvegicus; H=Homo Sapiens") 
-	#args = parser.parse_args()
+	# parser = argparse.ArgumentParser(description="Translate Ensembl Ids to Gene Names for the following \\	species... All these species will be merged into a chimeric file") 
+	# parser.add_argument("-s", "--species", type=str, help="R=Ratus Norvegicus; H=Homo Sapiens") 
+	# args = parser.parse_args()
 	os.chdir("data")
 	os.chdir("ensembl_files")
 	#print(os.getcwd())

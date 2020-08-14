@@ -181,6 +181,7 @@ def load_data(name):
 
 def load_names(data_names, norm=True, log1p=False, verbose=True):
     # Load datasets.
+    print("reached load_names")
     datasets = []
     genes_list = []
     n_cells = 0

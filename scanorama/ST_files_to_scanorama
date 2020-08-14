@@ -1,0 +1,4 @@
+cp data/ST_files/results_20200621_20-25-50/*stdata.csv data/scanorama/input_st_files/
+rename 's/csv/tsv/' data/scanorama/input_st_files/*csv
+cp data/ST_files/results_20200621_20-25-50/*stdata.csv data/scanorama/input_st_files/
+sed -i s'/,/\t/'g data/scanorama/input_st_files/*tsv

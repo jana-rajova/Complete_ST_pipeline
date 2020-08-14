@@ -11,11 +11,15 @@ def load_st_files(genes, st_file, timestamp):
 	# st_list = list,
 	st_dict = {}
 	plot_dict = {}
+	#print(os.getcwd())
+	
 	with open (st_file, "r") as file:
 		for line in file:
 			line = line.rstrip()
+
 			try:
-				df = pd.read_csv("data/ST_files/results_" + timestamp + "/" + line + "_stdata.csv", header=0, index_col=0)
+				print(os.getcwd())
+				df = pd.read_csv("data/ST_files/ST_matrix_processed/" + line + "_stdata.csv", header=0, index_col=0)
 				print("shape of", line, "file:", df.shape)
 				df_sum = df.iloc[0:,0:].sum(axis = 1, skipna = True)
 				st_dict[line] = df_sum
@@ -62,20 +66,20 @@ def remove_non_containing(st_dict, genes, strict):
 			else: 
 				wells_passed.append(well)
 		else:
-			if not 0 in gene_score:
+			if sum(gene_score) > 0:
 				wells_passed.append(well)
 			else: 
 				wells_not_passed.append(well)
 	print("Wells passed:", len(wells_passed), "\nWells not passed:", len(wells_not_passed))
 	return wells_passed, wells_not_passed
 
-def graphs(must_genes, inf_genes, wells_passed, wells_not_passed, st_dict, st_plot, timestamp, strict):
+def graphs(must_genes, inf_genes, wells_passed, wells_not_passed, st_dict, st_plot, output, strict, timestamp):
 	plt.style.use('seaborn')
 	"""
 	Making subplots each gene in the wells
 	"""
 	count = 0
-	res_folder = "data/ST_files/results_gene_filter-strict_" + str(strict) + "_" + timestamp
+	res_folder = output + "/gene_filter_results_" + timestamp
 	all_genes = must_genes + inf_genes
 	try:
 		os.mkdir(res_folder)
@@ -130,30 +134,28 @@ if __name__ == '__main__':
 	parser.add_argument("--graph", default=True, type=bool, help="Do you want to show graphs? ")
 	parser.add_argument("-f", "--file", type=str, help="File with ST pointers")
 	parser.add_argument("-t", "--timestamp", type=str, help="From which timestamp results do you want to take the ST files?")
-	parser.add_argument("-s", "--strict", type=bool, default=True, help="If True all necessary genes must be present, otherwise presence of any necessary gene will suffice")
+	parser.add_argument("-s", "--strict", type=int, default=1, help="If True all necessary genes must be present, otherwise presence of any necessary gene will suffice")
+	parser.add_argument("-o", "--output", type=str, help="output folder")
 	args = parser.parse_args()
 
 	all_genes = args.must_genes + args.inf_genes
 	# print(all_genes)
+	if args.strict == 0:
+		strict = False
+	else:
+		strict = True
+
 	st_dict, plot_dict = load_st_files(all_genes, args.file, args.timestamp)
-	# print(st_dict.keys())
-	passed, non_passed = remove_non_containing(st_dict, args.must_genes, args.strict)
+	passed, non_passed = remove_non_containing(st_dict, args.must_genes, strict)
 	print("Passed:", passed)
 	print("Not Passed:", non_passed)
-	# print(plot_dict)
-	graphs(must_genes=args.must_genes, inf_genes=args.inf_genes, wells_passed=passed, wells_not_passed=non_passed,st_dict=st_dict, st_plot=plot_dict, timestamp=args.timestamp, strict=args.strict)
+	graphs(must_genes=args.must_genes, inf_genes=args.inf_genes, wells_passed=passed, wells_not_passed=non_passed, timestamp=args.timestamp, st_dict=st_dict, st_plot=plot_dict, output=args.output, strict=strict)
 	print("Saving file of passed wells")
-	pass_out = ""
-	for gene in args.must_genes:
-		pass_out += "_" + gene
-	if args.strict == True:	
-		pass_out = "data/scanorama/ST_files_STRICT_filter_passed" + pass_out + ".txt"
-	else:
-		pass_out = "data/scanorama/ST_files_NON-STRICT_filter_passed" + pass_out + ".txt"
+	pass_out = args.output + "/ST_files_filter_passed" + args.timestamp + ".txt"
 	with open (pass_out, 'w+') as output:
 		for well in passed:
 			output.write("data/scanorama/input_st_files/" + well + "_stdata\n")
-	print("RUN COMPLETE!")
+	print("Filtering samples based on gene presence COMPLETE!")
 
 
 

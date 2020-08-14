@@ -16,6 +16,9 @@ from datetime import datetime
 parser =  argparse.ArgumentParser(description="Add inital parameters")
 parser.add_argument("--hvg", type=int, help="how many highly variable genes do you want to include?")
 parser.add_argument('-f', '--csv_file', type=str, help='csv file list')
+parser.add_argument("-t", "--timestamp", type=str)
+parser.add_argument("-o", "--output", type=str, help="output folder")
+
 args = parser.parse_args()
 
 NAMESPACE = 'panorama'
@@ -33,7 +36,6 @@ DIMRED = args.hvg
 add_genes = set()
 
 if __name__ == '__main__':
-    timestamp = datetime.now().strftime("%Y%m%d_%H-%M-%S")
 #   from config import data_names
 #   datasets, genes_list, n_cells = load_names(data_names)
 #   t0 = time()
@@ -91,6 +93,7 @@ if __name__ == '__main__':
         f.close
     print('Data names loaded')
     print(data_names)
+    print(os.getcwd())
     datasets, genes_list, n_cells = load_names(data_names)
     print(data_names)
     t0 = time()
@@ -103,29 +106,21 @@ if __name__ == '__main__':
             union=UNION,path=PATH, added_genes=ADDED_GENES, keep_dimensions=KEEP_DIMENSIONS, gene_merge=GENE_MERGE
             )
     genes = genes.tolist()
-    print(genes)
+    # print(genes)
 # the following lines were added for the UNION loop
     dict_pos = ext_index(data_names)
-    path1 = "data/scanorama/results_" + timestamp
-    path2 = "Union-" + str(UNION)
-    print(path1)
-    print(os.path.isdir(path1))
+    path1 = args.output + "/scanorama_output_" + args.timestamp
+    # print(path1)
+    # print(os.path.isdir(path1))
     if os.path.isdir(path1) is False:
         os.mkdir(path1)
     os.chdir(path1)
-    if os.path.isdir(path2) is False:
-        os.mkdir(path2)
-    os.chdir(path2)
-    pathdimred = "DIMRED_" + str(dimred)
-    if os.path.isdir(pathdimred) is False:
-        os.mkdir(pathdimred)
-    os.chdir(pathdimred)
     i = 0
     sample_list=[]
-    print("writing files: ", dimred, " into: ", pathdimred, sep="")
+    print("writing files: ", dimred, " into: ", path1, sep="")
     for key in dict_pos.keys():
 #   print(datasets_dimred[0])
-        csv = 'dataset-dimred_' + str(key) + "_" + str(UNION) + str(dimred) + '.csv'
+        csv = str(key) + "_dimred_union-" + str(UNION) + str(dimred) + '.csv'
         df = pd.DataFrame(datasets_dimred[i], columns=genes)
         print('csv: ', csv)
         print("key length", len(dict_pos[key]))
@@ -134,7 +129,8 @@ if __name__ == '__main__':
         df.to_csv(csv, index=0, header=True)
         i += 1
         sample_list.append(csv)
-    with open('heavy_panorama_log.txt', 'w') as log:
+    with open('heavy_panorama_' + str(HVG) + 'log.txt', 'w') as log:
+        log.write("HVG: " +  str(HVG) + "\n")
         log.write("KEEP_DIMENSIONS, " + str(KEEP_DIMENSIONS) + "\n")
         log.write("GENE_MERGE, " + str(GENE_MERGE)+ "\n")
         log.write("files," + str(len(dict_pos.keys()))+ "\n")

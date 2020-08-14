@@ -254,28 +254,28 @@ def quality_control_graph(step, matrix, cutoff, log):
 
 if __name__ == '__main__':
 
+# datetime object containing current date and time
+	timestamp = datetime.now().strftime("%Y%m%d_%H-%M-%S")
+	timestamp_path = "results_" + timestamp + "/"
+	os.chdir("data/ST_files")
+	os.mkdir(timestamp_path)
+	timestamp_path = "data/ST_files/results_" + timestamp + "/"
+	os.chdir("../../")
+
 	parser = argparse.ArgumentParser(description="parse out all the arguments for the ST dataframes")
-	parser.add_argument("-f", "--files", type=str, help="text file with samples for processing in csv format")
+	#parser.add_argument("-f", "--files", type=str, help="text file with samples for processing in csv format")
 	parser.add_argument("-e", "--ensembl", default="data/ensembl_files/Homo_Rat.csv", type=str, help="path to the ensembl path")
 	# parser.add_argument("-s", "--spots", type=str, help="spot files")
 	parser.add_argument("-s", "--selection", default=True, type=bool, help="Use all spot or only under the tissue (then False)")
-	parser.add_argument("-t", "--timestamp", type=str, help="timestamp")
 	args = parser.parse_args()
-	
-	timestamp_path = "results_" + args.timestamp + "/"
-	os.chdir("data/ST_files")
-	os.mkdir(timestamp_path)
-	timestamp_path = "data/ST_files/results_" + args.timestamp + "/"
-	os.chdir("../../")
-
 	samples = list()
 
 	#files loaded:
 	ensembl_location = args.ensembl
-	with open ("data/ST_files/" + args.files, "r") as file:
-		for line in file:
-			samples.append(line.rstrip())
-	print(len(samples), "sample(s) selected")
+	#with open ("data/ST_files/" +  snakemake.input[0], "r") as file:
+	#	for line in file:
+	#		samples.append(line.rstrip())
+	#print(len(samples), "sample(s) selected")
 	if args.selection == True:
 		feat = "selection"
 	else:
@@ -328,7 +328,8 @@ if __name__ == '__main__':
 			print(matrix.shape)
 			matrix = matrix.transpose()
 			log.append("The final matrix dimensions are: " + str(matrix.shape))
-			matrix.to_csv(timestamp_path + sample + "_stdata.csv")
+			os.chdir(timestamp_path)
+			matrix.to_csv(snakemake.output[0])
 			print(sample, "COMPLETED")
 			end = datetime.now()
 			print("Finished: ", end, sep='')
@@ -348,7 +349,7 @@ if __name__ == '__main__':
 			log.pop(0)
 			log.append(log_t)
 			log.insert(-1, "Gene names appearing more than once:")
-			with open (timestamp_path + sample + "_log.txt", "w+") as l:
+			with open (sample + "_log.txt", "w+") as l:
 				for a in log:
 					l.write(str(a) + "\n")
 				l.close()
