@@ -61,7 +61,7 @@ if __name__ == '__main__':
             print(os.getcwd())
             #add_genes = set()
             error_lines = list()
-            with open("data/scanorama_conf/claudio_mg.selected_probes", 'r') as file:
+            with open("../data/scanorama_conf/claudio_mg.selected_probes", 'r') as file:
                 file.readline()
                 for line in file:
                     try:

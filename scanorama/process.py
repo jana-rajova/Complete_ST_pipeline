@@ -254,3 +254,4 @@ if __name__ == '__main__':
     from config import data_names
 
     process(data_names)
+    print("Process.py script has run")

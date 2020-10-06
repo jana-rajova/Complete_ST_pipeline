@@ -12,14 +12,14 @@ def load_st_files(genes, st_file, timestamp):
 	st_dict = {}
 	plot_dict = {}
 	#print(os.getcwd())
-	
+
 	with open (st_file, "r") as file:
 		for line in file:
 			line = line.rstrip()
 
 			try:
 				print(os.getcwd())
-				df = pd.read_csv("data/ST_files/ST_matrix_processed/" + line + "_stdata.csv", header=0, index_col=0)
+				df = pd.read_csv("../data/ST_files/ST_matrix_processed/" + line + "_stdata.csv", header=0, index_col=0)
 				print("shape of", line, "file:", df.shape)
 				df_sum = df.iloc[0:,0:].sum(axis = 1, skipna = True)
 				st_dict[line] = df_sum
@@ -43,7 +43,7 @@ def load_st_files(genes, st_file, timestamp):
 			except:
 				print("File", line + "_stdata.csv not found")
 
-	print("Loaded", str(len(st_dict.keys())) + " wells")	
+	print("Loaded", str(len(st_dict.keys())) + " wells")
 
 	return st_dict, plot_dict
 
@@ -59,16 +59,16 @@ def remove_non_containing(st_dict, genes, strict):
 			elif gene in data.index:
 				gene_score.append(data.loc[[gene]].item())
 				# print(data.loc[[gene]])
-			# print("gene score", gene_score)	
+			# print("gene score", gene_score)
 		if strict == True:
 			if 0 in gene_score:
 				wells_not_passed.append(well)
-			else: 
+			else:
 				wells_passed.append(well)
 		else:
 			if sum(gene_score) > 0:
 				wells_passed.append(well)
-			else: 
+			else:
 				wells_not_passed.append(well)
 	print("Wells passed:", len(wells_passed), "\nWells not passed:", len(wells_not_passed))
 	return wells_passed, wells_not_passed
@@ -91,12 +91,12 @@ def graphs(must_genes, inf_genes, wells_passed, wells_not_passed, st_dict, st_pl
 		if dim1 > dim2:
 			dim1 += 1
 		else:
-			dim2 += 1 	
+			dim2 += 1
 	for well in st_plot.keys():
 		fig, ax = plt.subplots(dim2, dim1, sharex=True, sharey=True, constrained_layout=True)
 		fig.set_size_inches(dim1*2.5, dim2*2.5)
 		a = 0
-		b = 0 
+		b = 0
 		if well in wells_passed:
 			sup =  "_passed"
 			fig.suptitle(well + '- passed')
@@ -154,15 +154,5 @@ if __name__ == '__main__':
 	pass_out = args.output + "/ST_files_filter_passed" + args.timestamp + ".txt"
 	with open (pass_out, 'w+') as output:
 		for well in passed:
-			output.write("data/scanorama/input_st_files/" + well + "_stdata\n")
+			output.write("../data/scanorama/input_st_files/" + well + "_stdata\n")
 	print("Filtering samples based on gene presence COMPLETE!")
-
-
-
-
-
-
-
-
-
-
