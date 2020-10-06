@@ -74,12 +74,16 @@ def position_correction(matrix, position_df, drop_outside=True, log=log):
 	print("The positions will be updated")
 	counter = 0
 	list_updated_pos = ["positions"]
+	pos_array = None
 	for pos in matrix.index[1:]:
 		search = re.search("([0-9]+)x([0-9]+)", pos)
-		try:
+		if not pos_array is None:
 			pos_array = np.append(pos_array, [[int(search.group(1)),int(search.group(2))]], axis=0)
-		except:
+			#print(pos_array)
+		else:
 			pos_array = np.array([[int(search.group(1)),int(search.group(2))]])
+			#print(pos_array)
+	
 	for i in range(len(pos_array)):
 		new_coordinates = position_df[(position_df['x']== pos_array[i,0]) & (position_df['y'] == pos_array[i,1])]
 		if len(new_coordinates)>0:
@@ -262,11 +266,11 @@ if __name__ == '__main__':
 	parser.add_argument("-t", "--timestamp", type=str, help="timestamp")
 	args = parser.parse_args()
 	
-	timestamp_path = "results_" + args.timestamp + "/"
-	os.chdir("data/ST_files")
-	os.mkdir(timestamp_path)
-	timestamp_path = "data/ST_files/results_" + args.timestamp + "/"
-	os.chdir("../../")
+	#timestamp_path = "results_" + args.timestamp + "/"
+	#os.chdir("data/ST_files")
+	#os.mkdir(timestamp_path)
+	timestamp_path = "data/ST_files/ST_matrix_processed/"
+	#os.chdir("../../")
 
 	samples = list()
 
@@ -276,6 +280,7 @@ if __name__ == '__main__':
 		for line in file:
 			samples.append(line.rstrip())
 	print(len(samples), "sample(s) selected")
+	print(samples)
 	if args.selection == True:
 		feat = "selection"
 	else:
@@ -288,7 +293,7 @@ if __name__ == '__main__':
 		print(start)
 		log.append("Started: " + str(start))
 		try:
-			matrix =  "data/ST_files/original_ST/" + sample + "_stdata.csv"
+			matrix =  "data/ST_files/original_ST_troubleshoot/" + sample + "_stdata.csv"
 			log.append("ST file: " + matrix)
 			matrix = pd.read_csv(matrix, header=None, index_col=0,low_memory=False)
 			print(sample, "matrix loaded successfully!")
