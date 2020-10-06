@@ -1,4 +1,4 @@
-import pandas as pd 
+import pandas as pd
 import numpy as np
 import os
 import re
@@ -7,7 +7,7 @@ from matplotlib import pyplot as plt
 import seaborn as sns
 from datetime import datetime
 
-# The script needs three input files. The matrix, Ensembl id to symbol dataframe 
+# The script needs three input files. The matrix, Ensembl id to symbol dataframe
 # and new positions file
 log = list()
 def df_to_parts(matrix):
@@ -83,7 +83,7 @@ def position_correction(matrix, position_df, drop_outside=True, log=log):
 		else:
 			pos_array = np.array([[int(search.group(1)),int(search.group(2))]])
 			#print(pos_array)
-	
+
 	for i in range(len(pos_array)):
 		new_coordinates = position_df[(position_df['x']== pos_array[i,0]) & (position_df['y'] == pos_array[i,1])]
 		if len(new_coordinates)>0:
@@ -98,12 +98,12 @@ def position_correction(matrix, position_df, drop_outside=True, log=log):
 	matrix = matrix.set_index("positions")
 	print(counter, " positions were dropped as they lie outside the tissue", sep="")
 	log.append(str(counter) + " positions were dropped as they lie outside the tissue")
-	matrix.to_csv("data/ST_files/temp/" + sample + "_stdata_temp.csv")
+	matrix.to_csv("../data/ST_files/temp/" + sample + "_stdata_temp.csv")
 	return matrix, log
 
 def filter_by_expression(matrix, min_row_count=300, min_feat_count=2, min_features=4, log=log):
-	print("Filtering features and genes by expression. Positions with less than ", min_row_count, 
-		" transcripts are discarded as well as genes that do not reach at least ", min_feat_count, 
+	print("Filtering features and genes by expression. Positions with less than ", min_row_count,
+		" transcripts are discarded as well as genes that do not reach at least ", min_feat_count,
 		" in at least ", min_features, " features", sep='')
 	# matrix_num = matrix.iloc[:, :]
 
@@ -118,21 +118,21 @@ def filter_by_expression(matrix, min_row_count=300, min_feat_count=2, min_featur
 	list_to_drop = list()
 	for i in sums.index.tolist():
 		# print(i)
-		# count_arr = np.append() 
+		# count_arr = np.append()
 		if sums[i]<min_row_count:
 			counter += 1
 			list_to_drop.append(i)
 	# print(list_to_drop)
 	# print(type(list_to_drop[0]))
 	matrix.drop(list_to_drop, axis=0, inplace=True)
-	
+
 	print(counter, " row(s) droppped as they contained less than the minimum set ", min_row_count, " transcrips", sep="")
 	log.append("Filtering by expression parameters:")
 	log.append("Minimum row expression count: " + str(min_row_count))
 	log.append(str(counter) + " row(s) droppped as they contained less than the minimum set " + str(min_row_count) + " transcrips")
 	counter = 0
 	dr_counter = 0
-	
+
 	sums = matrix.mask(matrix >= min_feat_count, np.nan).isnull().sum(axis=0)
 	list_to_drop = list()
 	expr_data = matrix.sum(axis=0)
@@ -148,12 +148,12 @@ def filter_by_expression(matrix, min_row_count=300, min_feat_count=2, min_featur
 			dr_counter += 1
 			list_to_drop.append(i)
 	matrix.drop(list_to_drop, axis=1, inplace=True)
-	
+
 	print(dr_counter, " gene(s) dropped as their expression was not more than ", min_feat_count, " in more than ", min_features, " features", sep="")
 	log.append("Minimum count at least " + str(min_feat_count) + " in at least " + str(min_features) + " features")
 	log.append(str(counter) + " gene(s) dropped as their expression was not more than " + str(min_feat_count) + " in more than " + str(min_features) + " features")
 	matrix.to_csv("data/ST_files/temp/" + sample + "_stdata_temp.csv")
-	return matrix, log	
+	return matrix, log
 
 def quality_control_graph(step, matrix, cutoff, log):
 	#fig, axs = plt.subplots(ncols=3)
@@ -168,7 +168,7 @@ def quality_control_graph(step, matrix, cutoff, log):
 				sns.distplot(tg.tolist(), kde=True, color='orange', label="Transcripts per gene").set_xscale('log')
 			elif scale == False:
 				sns.distplot(tg.tolist(), kde=True, color='orange', label="Transcripts per gene")
-		#plt.legend(bbox_to_anchor=(1, 1), borderaxespad=0)				
+		#plt.legend(bbox_to_anchor=(1, 1), borderaxespad=0)
 			plt.title(step)
 			mean = tg.mean()
 			median = tg.median()
@@ -251,7 +251,7 @@ def quality_control_graph(step, matrix, cutoff, log):
 		plt.clf()
 	except:
 		print(sample, " graphs not created", sep ='')
-		log.append("OBS!!! GRAPHS NOT CREATED! step: " + step)	
+		log.append("OBS!!! GRAPHS NOT CREATED! step: " + step)
 	finally:
 		os.chdir("../../../")
 	return log
@@ -265,18 +265,18 @@ if __name__ == '__main__':
 	parser.add_argument("-s", "--selection", default=True, type=bool, help="Use all spot or only under the tissue (then False)")
 	parser.add_argument("-t", "--timestamp", type=str, help="timestamp")
 	args = parser.parse_args()
-	
+
 	#timestamp_path = "results_" + args.timestamp + "/"
 	#os.chdir("data/ST_files")
 	#os.mkdir(timestamp_path)
-	timestamp_path = "data/ST_files/ST_matrix_processed/"
+	timestamp_path = "../data/ST_files/ST_matrix_processed/"
 	#os.chdir("../../")
 
 	samples = list()
 
 	#files loaded:
 	ensembl_location = args.ensembl
-	with open ("data/ST_files/" + args.files, "r") as file:
+	with open ("../data/ST_files/" + args.files, "r") as file:
 		for line in file:
 			samples.append(line.rstrip())
 	print(len(samples), "sample(s) selected")
@@ -285,7 +285,7 @@ if __name__ == '__main__':
 		feat = "selection"
 	else:
 		feat = "all"
-		
+
 	for sample in samples:
 		#loading files
 		log = [sample]
@@ -293,11 +293,11 @@ if __name__ == '__main__':
 		print(start)
 		log.append("Started: " + str(start))
 		try:
-			matrix =  "data/ST_files/original_ST_troubleshoot/" + sample + "_stdata.csv"
+			matrix =  "../data/ST_files/original_ST_troubleshoot/" + sample + "_stdata.csv"
 			log.append("ST file: " + matrix)
 			matrix = pd.read_csv(matrix, header=None, index_col=0,low_memory=False)
 			print(sample, "matrix loaded successfully!")
-			features = "data/ST_files/original_features/spot_data-" + feat + "-" + sample + ".csv"
+			features = "../data/ST_files/original_features/spot_data-" + feat + "-" + sample + ".csv"
 			log.append("Spot_data: " + features)
 			position_df = pd.read_csv(features, header=0, index_col=False)
 			print(sample, feat, " features' positions loaded!")
@@ -318,7 +318,7 @@ if __name__ == '__main__':
 		min_features = 4
 
 		if execute == True:
-			print(matrix.shape)	
+			print(matrix.shape)
 			matrix, log = position_correction(matrix, position_df, drop_outside=args.selection, log=log)
 			print(matrix.iloc[:5,:3])
 			print(sample, "'s feature selection and name correction done!", sep='')
@@ -347,7 +347,7 @@ if __name__ == '__main__':
 			# feat_counts = pd.DataFrame({'trans_per_feat' : matrix.sum(axis=0).tolist()})
 			# sn.catplot(x='trans_per_gene', data=gene_counts, kind='count', color='orange', label="Transcripts per gene")
 			# sn.catplot(x="trans_per_feat", data=feat_counts, kind='count', color='red', label="Transcripts per feature")
-			
+
 
 			log_t = log.pop(int(log[0]))
 			log.pop(0)

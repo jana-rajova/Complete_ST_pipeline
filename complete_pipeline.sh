@@ -9,7 +9,7 @@ echo 'Welcome to the Spatial Transcriptomics visualization pipeline!'
 #Argumentsfor"ensembltranslate"script
 #therearenosetArgumentssofar
 
-matrix_annonation_exec=0
+matrix_annonation_exec=1
 
 #Argumentsformatrixannnotation
 #MA_FILES automatically looks for the file in the data/ST_files folder
