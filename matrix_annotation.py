@@ -10,6 +10,8 @@ from datetime import datetime
 # The script needs three input files. The matrix, Ensembl id to symbol dataframe
 # and new positions file
 log = list()
+
+
 def df_to_parts(matrix):
 	genes = matrix.columns.to_list()
 	positions = matrix.index.to_list()
@@ -17,6 +19,7 @@ def df_to_parts(matrix):
 	matrix.columns = [''] * len(matrix.columns)
 	matrix.astype('int')
 	return genes, positions, matrix
+
 
 def ensembl_to_symbol(matrix,ensembl_location, log=log):
 	"""
@@ -45,7 +48,7 @@ def ensembl_to_symbol(matrix,ensembl_location, log=log):
 		genes_symb.append(gene)
 		if counter_pos % 1000 == 0:
 			print("processing entry: ", counter_pos, "/", counter_fin, sep='')
-	with open(timestamp_path + sample + "_genes.txt", "w+") as output:
+	with open(args.output + sample + "_genes.txt", "w+") as output:
 		print("Outputting gene lists into a file")
 		for i in range(len(genes_ens)):
 			output.write(str(genes_ens[i])+ " == " + str(genes_symb[i]) + '\n')
@@ -64,8 +67,9 @@ def ensembl_to_symbol(matrix,ensembl_location, log=log):
 	# print("Gene names appearing more than once:")
 	# print(duplicates)
 	log.append(str(len(set(genes_ens))) +  " Ensembl IDs were translated into " + str(len(set(genes_symb))) + " gene names")
-	matrix.to_csv("data/ST_files/temp/" + sample + "_stdata_temp.csv")
+	matrix.to_csv("../data/ST_files/temp/" + sample + "_stdata_temp.csv")
 	return matrix, log
+
 
 def position_correction(matrix, position_df, drop_outside=True, log=log):
 	"""
@@ -98,8 +102,9 @@ def position_correction(matrix, position_df, drop_outside=True, log=log):
 	matrix = matrix.set_index("positions")
 	print(counter, " positions were dropped as they lie outside the tissue", sep="")
 	log.append(str(counter) + " positions were dropped as they lie outside the tissue")
-	matrix.to_csv("../data/ST_files/temp/" + sample + "_stdata_temp.csv")
+	#matrix.to_csv("../data/ST_files/temp/" + sample + "_stdata_temp.csv")
 	return matrix, log
+
 
 def filter_by_expression(matrix, min_row_count=300, min_feat_count=2, min_features=4, log=log):
 	print("Filtering features and genes by expression. Positions with less than ", min_row_count,
@@ -112,7 +117,8 @@ def filter_by_expression(matrix, min_row_count=300, min_feat_count=2, min_featur
 	expr_data.sort_values(ascending=False, inplace=True)
 	# print(expr_data)
 	# print(type(expr_data))
-	expr_data.to_csv(timestamp_path + sample + "_transcripts_per_feature.csv")
+	print(os.getcwd())
+	expr_data.to_csv(args.output + sample + "_transcripts_per_feature.csv")
 	maxim = len(matrix.columns)
 	counter = 0
 	list_to_drop = list()
@@ -137,7 +143,7 @@ def filter_by_expression(matrix, min_row_count=300, min_feat_count=2, min_featur
 	list_to_drop = list()
 	expr_data = matrix.sum(axis=0)
 	expr_data.sort_values(ascending=False, inplace=True)
-	expr_data.to_csv(timestamp_path + sample + "_transcripts_per_gene.csv")
+	expr_data.to_csv(args.output + sample + "_transcripts_per_gene.csv")
 	# sums.to_csv(sample + "gene_counts.csv")
 	for i in sums.index.tolist():
 		#print(matrix[i])
@@ -152,13 +158,14 @@ def filter_by_expression(matrix, min_row_count=300, min_feat_count=2, min_featur
 	print(dr_counter, " gene(s) dropped as their expression was not more than ", min_feat_count, " in more than ", min_features, " features", sep="")
 	log.append("Minimum count at least " + str(min_feat_count) + " in at least " + str(min_features) + " features")
 	log.append(str(counter) + " gene(s) dropped as their expression was not more than " + str(min_feat_count) + " in more than " + str(min_features) + " features")
-	matrix.to_csv("data/ST_files/temp/" + sample + "_stdata_temp.csv")
+	#matrix.to_csv("../data/ST_files/temp/" + sample + "_stdata_temp.csv")
 	return matrix, log
+
 
 def quality_control_graph(step, matrix, cutoff, log):
 	#fig, axs = plt.subplots(ncols=3)
 	try:
-		os.chdir(timestamp_path)
+		os.chdir(args.output)
 		tg = matrix.sum(axis=0)
 		tf = matrix.sum(axis=1)
 		gf = pd.Series(np.count_nonzero(matrix, axis=1))
@@ -249,34 +256,36 @@ def quality_control_graph(step, matrix, cutoff, log):
 		plt.savefig(sample + "_genes_per_feature" + "_" + step + ".png", bbox_inches='tight')
 		# plt.show()
 		plt.clf()
+		
+
 	except:
 		print(sample, " graphs not created", sep ='')
 		log.append("OBS!!! GRAPHS NOT CREATED! step: " + step)
-	finally:
-		os.chdir("../../../")
+	
+	os.chdir("/media/dropbox/MNM team folder/Spatial transcriptomics/Complete_processing_pipeline/bin/")
+	#print("After plotting the results, we're in: ", os.getcwd())
 	return log
+
 
 if __name__ == '__main__':
 
 	parser = argparse.ArgumentParser(description="parse out all the arguments for the ST dataframes")
 	parser.add_argument("-f", "--files", type=str, help="text file with samples for processing in csv format")
-	parser.add_argument("-e", "--ensembl", default="data/ensembl_files/Homo_Rat.csv", type=str, help="path to the ensembl path")
+	parser.add_argument("-e", "--ensembl", default="../data/ensembl_files/Homo_Rat.csv", type=str, help="path to the ensembl path")
 	# parser.add_argument("-s", "--spots", type=str, help="spot files")
 	parser.add_argument("-s", "--selection", default=True, type=bool, help="Use all spot or only under the tissue (then False)")
-	parser.add_argument("-t", "--timestamp", type=str, help="timestamp")
+	parser.add_argument("-t", "--timestamp", 
+		type=str, help="timestamp")
+	parser.add_argument("--output", type=str, help="path to the output matrix files folder", default="../data/ST_files/ST_matrix_processed_test/")
+	parser.add_argument("--original_matrix_folder", type=str, default="../data/ST_files/original_ST_all/")
+	parser.add_argument("--feature_folder", type=str, default="../data/ST_files/original_features/")
 	args = parser.parse_args()
-
-	#timestamp_path = "results_" + args.timestamp + "/"
-	#os.chdir("data/ST_files")
-	#os.mkdir(timestamp_path)
-	timestamp_path = "../data/ST_files/ST_matrix_processed/"
-	#os.chdir("../../")
 
 	samples = list()
 
 	#files loaded:
 	ensembl_location = args.ensembl
-	with open ("../data/ST_files/" + args.files, "r") as file:
+	with open (args.files, "r") as file:
 		for line in file:
 			samples.append(line.rstrip())
 	print(len(samples), "sample(s) selected")
@@ -293,13 +302,17 @@ if __name__ == '__main__':
 		print(start)
 		log.append("Started: " + str(start))
 		try:
-			matrix =  "../data/ST_files/original_ST_troubleshoot/" + sample + "_stdata.csv"
+			matrix =  args.original_matrix_folder + sample + "_stdata.csv"
 			log.append("ST file: " + matrix)
-			matrix = pd.read_csv(matrix, header=None, index_col=0,low_memory=False)
+			matrix = pd.read_csv(matrix, header=None, index_col=0, low_memory=False)
 			print(sample, "matrix loaded successfully!")
-			features = "../data/ST_files/original_features/spot_data-" + feat + "-" + sample + ".csv"
+			try:
+				features =  args.feature_folder + "spot_data-" + feat + "-" + sample + ".csv"
+				position_df = pd.read_csv(features, header=0, index_col=False)
+			except:
+				features =  args.feature_folder + "spot_data-" + feat + "-" + sample + ".tsv"
+				position_df = pd.read_csv(features, header=0, index_col=False, delimiter="\t")
 			log.append("Spot_data: " + features)
-			position_df = pd.read_csv(features, header=0, index_col=False)
 			print(sample, feat, " features' positions loaded!")
 			log.append("samples loaded successfully")
 			log.append("The initial matrix dimensions are: (" + str(len(matrix.index)-1) + ", " + str(len(matrix.columns)) + ")")
@@ -308,7 +321,7 @@ if __name__ == '__main__':
 			print(sample, "Sample loading unsuccessful!")
 			execute = False
 		print("execute: ", execute)
-		# matrix = matrix.iloc[:500,:2000]
+		#matrix = matrix.iloc[:500,:2000]
 
 		"""
 		Filtering selections:
@@ -318,6 +331,9 @@ if __name__ == '__main__':
 		min_features = 4
 
 		if execute == True:
+			if not os.path.isdir(args.output):
+				print("Creating output folder anew!")
+				os.makedirs(args.output)
 			print(matrix.shape)
 			matrix, log = position_correction(matrix, position_df, drop_outside=args.selection, log=log)
 			print(matrix.iloc[:5,:3])
@@ -333,7 +349,8 @@ if __name__ == '__main__':
 			print(matrix.shape)
 			matrix = matrix.transpose()
 			log.append("The final matrix dimensions are: " + str(matrix.shape))
-			matrix.to_csv(timestamp_path + sample + "_stdata.csv")
+			#print(os.getcwd())
+			matrix.to_csv(args.output + sample + "_stdata.csv")
 			print(sample, "COMPLETED")
 			end = datetime.now()
 			print("Finished: ", end, sep='')
@@ -341,19 +358,11 @@ if __name__ == '__main__':
 			log.append("Duration: " + str(end-start))
 			print("Duration: ", str(end-start), sep='')
 
-
-			#next section is for using catplot
-			# gene_counts = pd.DataFrame({'trans_per_gene' : matrix.sum(axis=1).tolist()})
-			# feat_counts = pd.DataFrame({'trans_per_feat' : matrix.sum(axis=0).tolist()})
-			# sn.catplot(x='trans_per_gene', data=gene_counts, kind='count', color='orange', label="Transcripts per gene")
-			# sn.catplot(x="trans_per_feat", data=feat_counts, kind='count', color='red', label="Transcripts per feature")
-
-
 			log_t = log.pop(int(log[0]))
 			log.pop(0)
 			log.append(log_t)
 			log.insert(-1, "Gene names appearing more than once:")
-			with open (timestamp_path + sample + "_log.txt", "w+") as l:
+			with open (args.output + sample + "_log.txt", "w+") as l:
 				for a in log:
 					l.write(str(a) + "\n")
 				l.close()
