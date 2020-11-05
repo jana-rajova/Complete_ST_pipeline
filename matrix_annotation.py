@@ -11,6 +11,13 @@ from datetime import datetime
 # and new positions file
 log = list()
 
+def remove_ambiguous(st_file, log):
+	amb_entries = list(filter(lambda symbol:(symbol.startswith("__ambiguous")), st_file.index.to_list()))
+	log.append("The following ambiguous entries were removed from the dataframe")
+	log.append(amb_entries)
+	st_file.drop(amb_entries, axis=0, inplace=True)
+	return log
+
 
 def df_to_parts(matrix):
 	genes = matrix.columns.to_list()
@@ -58,6 +65,7 @@ def ensembl_to_symbol(matrix,ensembl_location, log=log):
 	matrix = matrix.iloc[1:,:].astype("float64")
 	print(matrix.shape)
 	matrix = matrix.groupby(matrix.columns, axis=1).sum()
+	log = remove_ambiguous(matrix)
 	print(matrix.shape)
 	print("ensembl length: ", len(set(genes_ens)), "; symbol length: ", len(set(genes_symb)), sep='')
 	log.append("Ensembl ID to Gene Name translation:")
@@ -67,7 +75,7 @@ def ensembl_to_symbol(matrix,ensembl_location, log=log):
 	# print("Gene names appearing more than once:")
 	# print(duplicates)
 	log.append(str(len(set(genes_ens))) +  " Ensembl IDs were translated into " + str(len(set(genes_symb))) + " gene names")
-	matrix.to_csv("../data/ST_files/temp/" + sample + "_stdata_temp.csv")
+	#matrix.to_csv("../data/ST_files/temp/" + sample + "_stdata_temp.csv")
 	return matrix, log
 
 
@@ -262,7 +270,7 @@ def quality_control_graph(step, matrix, cutoff, log):
 		print(sample, " graphs not created", sep ='')
 		log.append("OBS!!! GRAPHS NOT CREATED! step: " + step)
 	
-	os.chdir("/media/dropbox/MNM team folder/Spatial transcriptomics/Complete_processing_pipeline/bin/")
+	os.chdir(args.current_folder)
 	#print("After plotting the results, we're in: ", os.getcwd())
 	return log
 
@@ -279,6 +287,7 @@ if __name__ == '__main__':
 	parser.add_argument("--output", type=str, help="path to the output matrix files folder", default="../data/ST_files/ST_matrix_processed_test/")
 	parser.add_argument("--original_matrix_folder", type=str, default="../data/ST_files/original_ST_all/")
 	parser.add_argument("--feature_folder", type=str, default="../data/ST_files/original_features/")
+	parser.add_argument("-c", "--current_folder", type=str, default="/mnt/UserDataNAS/OrganizedSeqFiles/ST/Complete_ST_pipeline/bin")
 	args = parser.parse_args()
 
 	samples = list()
@@ -302,16 +311,19 @@ if __name__ == '__main__':
 		print(start)
 		log.append("Started: " + str(start))
 		try:
-			matrix =  args.original_matrix_folder + sample + "_stdata.csv"
+			matrix =  args.original_matrix_folder + sample + "_stdata.tsv"
+			print(matrix)
 			log.append("ST file: " + matrix)
-			matrix = pd.read_csv(matrix, header=None, index_col=0, low_memory=False)
+			matrix = pd.read_csv(matrix, header=None, index_col=0, low_memory=False, delimiter="\t")
 			print(sample, "matrix loaded successfully!")
-			try:
-				features =  args.feature_folder + "spot_data-" + feat + "-" + sample + ".csv"
-				position_df = pd.read_csv(features, header=0, index_col=False)
-			except:
-				features =  args.feature_folder + "spot_data-" + feat + "-" + sample + ".tsv"
-				position_df = pd.read_csv(features, header=0, index_col=False, delimiter="\t")
+			# try:
+			# 	features =  args.feature_folder + "spot_data-" + feat + "-" + sample + ".csv"
+			# 	print(features)
+			# 	position_df = pd.read_csv(features, header=0, index_col=False)
+			# except:
+			features =  args.feature_folder + sample + "-spot_data-" + feat + ".tsv"
+			print(features)
+			position_df = pd.read_csv(features, header=0, index_col=False, delimiter="\t")
 			log.append("Spot_data: " + features)
 			print(sample, feat, " features' positions loaded!")
 			log.append("samples loaded successfully")
@@ -326,9 +338,9 @@ if __name__ == '__main__':
 		"""
 		Filtering selections:
 		"""
-		min_row_count = 300
+		min_row_count = 100
 		min_feat_count = 2
-		min_features = 4
+		min_features = 2
 
 		if execute == True:
 			if not os.path.isdir(args.output):
@@ -350,7 +362,7 @@ if __name__ == '__main__':
 			matrix = matrix.transpose()
 			log.append("The final matrix dimensions are: " + str(matrix.shape))
 			#print(os.getcwd())
-			matrix.to_csv(args.output + sample + "_stdata.csv")
+			matrix.to_csv(args.output + sample + "_stdata.tsv", delimiter="\t")
 			print(sample, "COMPLETED")
 			end = datetime.now()
 			print("Finished: ", end, sep='')

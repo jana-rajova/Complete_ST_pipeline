@@ -1,0 +1,146 @@
+import numpy as np
+import re
+import scipy.cluster.hierarchy as sch
+from sklearn.cluster import AgglomerativeClustering as ac
+import umap
+import pandas as pd
+import os
+import matplotlib.pyplot as plt
+import seaborn as sns
+import argparse
+import Utils
+import scanpy as sc
+
+
+# genes is again specific to origianl csv files, but maybe we can also do it for scanorama and have the dimensions there instead if I find a way to find out,which genes contributed to which columns??
+# contains lines from the csv file
+def initiate_anndata_file(csv_list, path):
+    samples_full = list()
+    sample_list = list()
+    naming = ""
+    with open(path + csv_list, 'r') as f:
+        for line in f:
+            samples_full.append(line.rstrip())
+        f.close()
+    #print(samples_full)
+    
+    for sample in samples_full:
+        try:
+            #print(sample)
+            name = re.search("([A-Z]{2}[0-9]+_[C-E][0-9])([A-Za-z0-9-_.]*)", sample)
+            #print(name.group(1), name.group(2))
+            sample_list.append(name.group(1))
+            naming = name.group(2)
+        except OSError:
+            print(sample, " not found!")
+    adata = Utils.join_df_to_anndata(sample_list=sample_list, path=path, naming=naming, features=0)
+
+    return adata
+
+def plot_well(adata):
+    wells = set(adata.obs["well"].to_list())
+    for well in wells:
+        adata_well = adata[adata.obs["well"]==well, :]
+        # clust_max = int(adata.obs['cluster'].max())
+        sc.pl.scatter(adata_well, x='X', y='Y', color='cluster', size=250, show=False, title=well + " unified, coordinates", save="unified_coord_" + well + ".png", frameon=True)
+
+        sc.pl.scatter(adata_well, x='umap1', y='umap2', color='cluster', size=100, show=False, title=well + " unified, UMAP scatter", save="unified_UMAP_scatter_" + well + ".png", frameon=True)
+
+def plot_separate(adata):
+    wells = set(adata.obs["well"].to_list())
+    
+    for well in wells:
+        adata_well = adata[adata.obs["well"]==well, :]
+        sc.pl.scatter(adata_well, x='umap_sep_x', y='umap_sep_y', size=100, color='cluster_sep', show=False, save="well-unique_UMAP_scatter_" + well + ".png", title=well + " well-unique UMAP scatter", frameon=True)
+
+        sc.pl.scatter(adata_well, x='X', y='Y', color='cluster_sep', size=250, show=False, save="well-unique_coord_" + well + ".png", title=well + " well-unique, coordinates", frameon=True)
+
+def plot_scatter(adata):
+    wells = set(adata.obs["well"].to_list())
+
+    sc.pl.scatter(adata, x='umap1', y='umap2', color='cluster', size=30, title="UMAP with unified clusters", save="unified_UMAP_cluster_map.png", show=False)
+
+    sc.pl.scatter(adata, x='umap1', y='umap2', color='well', size=30, title="UMAP with coded wells", save="unified_UMAP_well_map.png", alpha=0.7, show=False)
+
+def umap_separate(adata, thresh_sep):
+    wells = adata.obs["well"].unique().to_list()
+    hc = list()
+    umap_2D = np.array([])
+
+    for well in wells:
+        print(well)
+        array_well = adata.X[adata.obs["well"]==well, :]
+        print(array_well.shape)
+        umap_clust = umap.UMAP(n_neighbors=5, min_dist=0.5, n_components=50).fit_transform(array_well)
+        hc_c = ac(n_clusters=None, affinity='euclidean', linkage='ward', distance_threshold=thresh_sep)
+        hc = hc + list(hc_c.fit_predict(umap_clust).astype(int, copy=False))
+        # print(hc)
+        # print(type(hc[0]))
+        # print(len(hc))
+        if not umap_2D.size == 0:
+            umap_2D = np.vstack((umap_2D, umap.UMAP(n_neighbors=5, min_dist=0.5, n_components=2).fit_transform(array_well)))
+        else:
+            umap_2D = umap.UMAP(n_neighbors=5, min_dist=0.5, n_components=2).fit_transform(array_well)
+        # print("umap_2D shape")
+        # print(umap_2D.shape)
+    
+    adata.obs['cluster_sep'] = hc
+    adata.obs['cluster_sep'] = adata.obs['cluster_sep'].astype('category')
+    adata.obs['umap_sep_x'] = umap_2D[:, 0]
+    adata.obs['umap_sep_y'] = umap_2D[:, 1]
+    print(adata.obs.head())
+    print(adata.obs.columns)
+
+    return adata
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description='Add threshold and what are the dimensions of the scanorama dataset in quesion')
+    parser.add_argument('--threshold_united', '-u', type=int, help='threshold for cluster assignment with all wells clustered together')
+    parser.add_argument('--threshold_separate', '-s', type=int, default=3, help='threshold for cluster assignment in clustering with separate wells')
+    # # parser.add_argument('-d', '--dimensions', type=int, help='how many dimensions does the scanorama file have?')
+    # parser.add_argument('-c', '--clustering_dimensions', type=int, help='in how many dimensions does the ahc algorithm cluster?')
+    parser.add_argument('-t', '--timestamp', type=str, help='scanorama result file timestamp')
+    parser.add_argument("-o", "--output", type=str, help="output folder")
+    args = parser.parse_args()
+    sc.set_figure_params(figsize=(5,5))
+
+    output_folder = args.output + "/result_" +  args.timestamp + "/scanorama_cluster_UMAP_output"
+    if not os.path.isdir(output_folder):
+        os.mkdir(output_folder)
+    os.chdir(output_folder)
+    print("Current  directory: ", os.getcwd())
+
+    adata = initiate_anndata_file(csv_list="csv_files.txt", path="../scanorama_output/")
+
+    adata = umap_separate(adata, thresh_sep=args.threshold_separate)
+
+    adata.obs['well_id'] = adata.obs['well'].cat.codes
+    adata.uns['UMAP_cluster_embedding'] = umap.UMAP(n_neighbors=5, min_dist=0.5, n_components=50).fit_transform(adata.X)
+    UMAP_2D = umap.UMAP(n_neighbors=5, min_dist=0.5, n_components=2).fit_transform(adata.X)
+    adata.obs['umap1'] = UMAP_2D[:, 0]
+    adata.obs['umap2'] = UMAP_2D[:, 1]
+
+    adata.obs["X"] = adata.obs["feature"].str.extract("X([0-9.]+)",expand=True).astype('float32')
+    adata.obs["Y"] = adata.obs["feature"].str.extract("_([0-9.]+)",expand=True).astype('float32')
+    adata.obs["Y"] = adata.obs["Y"]*(-1)
+
+    hc = ac(n_clusters=None, affinity='euclidean', linkage='ward', distance_threshold=args.threshold_united)
+    hc = hc.fit_predict(adata.uns['UMAP_cluster_embedding'])
+    adata.obs['cluster'] = hc
+    adata.obs['cluster'] = adata.obs['cluster'].astype('category')
+    print(adata)
+    print(adata.obs.head())
+    print(adata.obs.columns)    
+    
+    plot_separate(adata)
+    plot_well(adata)
+    plot_scatter(adata)
+    adata.write("anndata_scanorama_clustr_combined-threshold-" + str(args.threshold_united) + ".h5ad")
+
+
+
+
+
+    
+

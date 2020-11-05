@@ -7,7 +7,8 @@ import seaborn as sns
 from matplotlib import pyplot as plt
 import math
 
-def load_st_files(genes, st_file, timestamp):
+
+def load_st_files(genes, st_file, timestamp, input_folder):
 	# st_list = list,
 	st_dict = {}
 	plot_dict = {}
@@ -19,7 +20,9 @@ def load_st_files(genes, st_file, timestamp):
 
 			try:
 				print(os.getcwd())
-				df = pd.read_csv(args.input_folder + line + "_stdata.csv", header=0, index_col=0)
+				print("reading ", input_folder + line + "_stdata.tsv")
+				df = pd.read_csv(input_folder + line + "_stdata.tsv", header=0, index_col=0, delimiter="\t")
+				#remove_ambiguous(df)
 				print("shape of", line, "file:", df.shape)
 				df_sum = df.iloc[0:,0:].sum(axis = 1, skipna = True)
 				st_dict[line] = df_sum
@@ -41,11 +44,12 @@ def load_st_files(genes, st_file, timestamp):
 					plot_dict[line] = pos_df
 				# print(pos_df.head())
 			except:
-				print("File", line + "_stdata.csv not found")
+				print("File", line + "_stdata.tsv not found")
 
 	print("Loaded", str(len(st_dict.keys())) + " wells")
 
 	return st_dict, plot_dict
+
 
 def remove_non_containing(st_dict, genes, strict):
 	wells_passed = []
@@ -79,7 +83,7 @@ def graphs(must_genes, inf_genes, wells_passed, wells_not_passed, st_dict, st_pl
 	Making subplots each gene in the wells
 	"""
 	count = 0
-	res_folder = output + "/gene_filter_results_" + timestamp
+	res_folder = output + "/gene_filter_results"
 	all_genes = must_genes + inf_genes
 	try:
 		os.mkdir(res_folder)
@@ -112,12 +116,12 @@ def graphs(must_genes, inf_genes, wells_passed, wells_not_passed, st_dict, st_pl
 			if all_genes[i] in inf_genes:
 				color = 'YlGn'
 			if dim2 > 1:
-				plo = ax[a, b].scatter(x=st_plot[well]['X'], y=st_plot[well]['Y'], c=st_plot[well][all_genes[i]], cmap=plt.get_cmap(color), s=10)
+				plo = ax[a, b].scatter(x=st_plot[well]['X'], y=((-1)*st_plot[well]['Y']), c=st_plot[well][all_genes[i]], cmap=plt.get_cmap(color), s=10)
 				ax[a, b].set_title(title)
 				if st_plot[well][all_genes[i]].sum() > 0:
 					plt.colorbar(plo, ax=ax[a, b])
 			else:
-				plo = ax[b].scatter(x=st_plot[well]['X'], y=st_plot[well]['Y'], c=st_plot[well][all_genes[i]], cmap=plt.get_cmap(color), s=10)
+				plo = ax[b].scatter(x=st_plot[well]['X'], y=((-1)*st_plot[well]['Y']), c=st_plot[well][all_genes[i]], cmap=plt.get_cmap(color), s=10)
 				ax[b].set_title(title)
 				if st_plot[all_well][genes[i]].sum() > 0:
 					plt.colorbar(plo, ax=ax[b])
@@ -135,9 +139,13 @@ if __name__ == '__main__':
 	parser.add_argument("-f", "--file", type=str, help="File with ST pointers")
 	parser.add_argument("-t", "--timestamp", type=str, help="From which timestamp results do you want to take the ST files?")
 	parser.add_argument("-s", "--strict", type=int, default=1, help="If True all necessary genes must be present, otherwise presence of any necessary gene will suffice")
-	parser.add_argument("-o", "--output", type=str, help="output folder")
+	parser.add_argument("-o", "--output", type=str, help="output folder", default="../results/")
 	parser.add_argument("--input_folder", type=str, default="../data/ST_files/ST_matrix_processed/")
 	args = parser.parse_args()
+
+	output_folder = args.output + "result_" + args.timestamp + "/"
+	if not os.path.isdir(output_folder):
+		os.mkdir(output_folder)
 
 	all_genes = args.must_genes + args.inf_genes
 	# print(all_genes)
@@ -146,15 +154,20 @@ if __name__ == '__main__':
 	else:
 		strict = True
 
-	st_dict, plot_dict = load_st_files(all_genes, args.file, args.timestamp)
+	st_dict, plot_dict = load_st_files(all_genes, args.file, args.timestamp, input_folder=args.input_folder)
 	passed, non_passed = remove_non_containing(st_dict, args.must_genes, strict)
 	print("Passed:", passed)
 	print("Not Passed:", non_passed)
-	graphs(must_genes=args.must_genes, inf_genes=args.inf_genes, wells_passed=passed, wells_not_passed=non_passed, timestamp=args.timestamp, st_dict=st_dict, st_plot=plot_dict, output=args.output, strict=strict)
+	graphs(must_genes=args.must_genes, inf_genes=args.inf_genes, wells_passed=passed, wells_not_passed=non_passed, timestamp=args.timestamp, st_dict=st_dict, st_plot=plot_dict, output=output_folder, strict=strict)
 	print("Saving file of passed wells")
-	pass_out = args.output + "/ST_files_filter_passed" + args.timestamp + ".txt"
+	pass_out = output_folder + "ST_files_filter_passed_" + args.timestamp + ".txt"
+	well_list = output_folder + "ST_wells_filter_passed_" + args.timestamp + ".txt"
 
 	with open (pass_out, 'w+') as output:
+		for well in passed:
+			output.write(args.input_folder + well + "_stdata\n")
+
+	with open (well_list, 'w+') as output:
 		for well in passed:
 			output.write(well + "\n")
 	print("Filtering samples based on gene presence COMPLETE!")

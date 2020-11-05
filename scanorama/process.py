@@ -1,6 +1,6 @@
 import gzip
 import numpy as np
-import os.path
+import os
 import scipy.sparse
 from scipy.sparse import csr_matrix
 from sklearn.preprocessing import normalize
@@ -31,6 +31,31 @@ def load_tab(fname, max_genes=40000):
             if fname.endswith('.gz'):
                 line = line.decode('utf-8')
             fields = line.rstrip().split('\t')
+            genes.append(fields[0])
+            X[:, i] = [ float(f) for f in fields[1:] ]
+    return X[:, range(len(genes))], np.array(cells), np.array(genes)
+
+def load_csv(fname, max_genes=40000):
+    if fname.endswith('.gz'):
+        opener = gzip.open
+    else:
+        opener = open
+
+    with opener(fname, 'r') as f:
+        if fname.endswith('.gz'):
+            header = f.readline().decode('utf-8').rstrip().split(',')
+        else:
+            header = f.readline().rstrip().split(',')
+
+        cells = header[1:]
+        X = np.zeros((len(cells), max_genes))
+        genes = []
+        for i, line in enumerate(f):
+            if i > max_genes:
+                break
+            if fname.endswith('.gz'):
+                line = line.decode('utf-8')
+            fields = line.rstrip().split(',')
             genes.append(fields[0])
             X[:, i] = [ float(f) for f in fields[1:] ]
     return X[:, range(len(genes))], np.array(cells), np.array(genes)
@@ -110,6 +135,8 @@ def process_tab(fname, min_trans=MIN_TRANSCRIPTS):
         cache_prefix = '.'.join(fname.split('.')[:-2])
     elif fname.endswith('.tsv'):
         cache_prefix = '.'.join(fname.split('.')[:-1])
+    elif fname.endswith('.csv'):
+        cache_prefix = '.'.join(fname.split('.')[:-1])
     elif fname.endswith('.tsv.gz'):
         cache_prefix = '.'.join(fname.split('.')[:-2])
     else:
@@ -186,6 +213,7 @@ def load_names(data_names, norm=True, log1p=False, verbose=True):
     genes_list = []
     n_cells = 0
     for name in data_names:
+        print("the name in load_names is", name)
         X_i, genes_i = load_data(name)
         if norm:
             X_i = normalize(X_i, axis=1)
@@ -243,6 +271,8 @@ def process(data_names, min_trans=MIN_TRANSCRIPTS):
             process_tab(name + '.txt.gz', min_trans=min_trans)
         elif os.path.isfile(name + '.tsv'):
             process_tab(name + '.tsv', min_trans=min_trans)
+        elif os.path.isfile(name + '.csv'):
+            process_tab(name + '.csv', min_trans=min_trans)
         elif os.path.isfile(name + '.tsv.gz'):
             process_tab(name + '.tsv.gz', min_trans=min_trans)
         else:
@@ -253,5 +283,6 @@ def process(data_names, min_trans=MIN_TRANSCRIPTS):
 if __name__ == '__main__':
     from config import data_names
 
+    print(os.getcwd())
     process(data_names)
     print("Process.py script has run")

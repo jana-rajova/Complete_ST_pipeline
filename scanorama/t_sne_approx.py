@@ -28,7 +28,7 @@ from sklearn.decomposition import PCA
 from sklearn.metrics.pairwise import pairwise_distances
 from sklearn.manifold import _utils
 from sklearn.manifold import _barnes_hut_tsne
-from sklearn.externals.six import string_types
+from six import string_types
 from sklearn.utils import deprecated
 
 from annoy import AnnoyIndex

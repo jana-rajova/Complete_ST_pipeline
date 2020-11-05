@@ -2,7 +2,7 @@ from process import load_names, merge_datasets
 import os
 import scanorama as sc
 import pandas as pd
-from get_positions import index_from_csv as ext_index
+from get_positions import index_from_tsv as ext_index
 from time import time
 import numpy as np
 import re
@@ -109,11 +109,11 @@ if __name__ == '__main__':
     # print(genes)
 # the following lines were added for the UNION loop
     dict_pos = ext_index(data_names)
-    path1 = args.output + "/scanorama_output_" + args.timestamp
+    path1 = args.output + "result_" + args.timestamp + "/scanorama_output"
     # print(path1)
     # print(os.path.isdir(path1))
     if os.path.isdir(path1) is False:
-        os.mkdir(path1)
+        os.makedirs(path1)
     os.chdir(path1)
     i = 0
     sample_list=[]
