@@ -31,6 +31,8 @@ def index_from_tsv(data_names):
         print(name.group(0))
         print("the expdata file ", i, " exists: ", os.path.isfile(i + ".tsv"), "with the current path: ", os.getcwd(), "the attempted path is: ", os.getcwd(), i, ".tsv", sep = '')
         df = pd.read_csv(i + ".tsv", index_col = 0, delimiter="\t")
+        print("KEY SHAPE:", df.shape)
+        print(df.columns)
         print(i, i + ".tsv", name.group(0))
         dict_pos[name.group(0)] = df.columns
 #    os.chdir(curr_path)

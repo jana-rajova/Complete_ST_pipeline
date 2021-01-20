@@ -86,7 +86,7 @@ Normalizing..so returns
     -------
     corrected, genes
         By default (`return_dimred=False`), returns a two-tuple containing a
-        list of `scipy.sparse.csr_matrix` each with batch corrected valuADDEDes,
+        list of `scipy.sparse.csr_matrix` each with batch corrected values,
         and a single list of genes containing the intersection of inputted
         genes.
 
@@ -460,10 +460,10 @@ def translate_ensembl(genes, gene_list=gene_list):
 # Normalize and reduce dimensionality.
 def process_data(datasets, genes, added_gene_list=add_genes, hvg=HVG, dimred=DIMRED, verbose=True, added_genes=ADDED_GENES, path=PATH, gene_merge=GENE_MERGE, keep_dimensions=KEEP_DIMENSIONS):
     # Only keep highly variable genes
-    print("In scanorama, the DIMRED used is:", dimred)
-    #print("HVG is", HVG, "and hgv: ", hvg)
-    print("len genes: ", len(genes))
-    print("len aded_gene_list: ", len(added_gene_list))
+    # print("In scanorama, the DIMRED used is:", dimred)
+    # #print("HVG is", HVG, "and hgv: ", hvg)
+    # print("len genes: ", len(genes))
+    # print("len aded_gene_list: ", len(added_gene_list))
 
 # Commented translate ensembl. If you want to try to translate them with mygene, just uncomment the net line!
     #genes = translate_ensembl(genes)

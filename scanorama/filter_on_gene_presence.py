@@ -104,7 +104,7 @@ def graphs(must_genes, inf_genes, wells_passed, wells_not_passed, st_dict, st_pl
 		if well in wells_passed:
 			sup =  "_passed"
 			fig.suptitle(well + '- passed')
-			color = 'RdPu'
+			color = 'magma'
 			print("Processing passed well", well)
 		elif well in wells_not_passed:
 			fig.suptitle(well + '- discarded')
@@ -114,7 +114,7 @@ def graphs(must_genes, inf_genes, wells_passed, wells_not_passed, st_dict, st_pl
 		for i in range(len(all_genes)):
 			title = all_genes[i]
 			if all_genes[i] in inf_genes:
-				color = 'YlGn'
+				color = 'jet'
 			if dim2 > 1:
 				plo = ax[a, b].scatter(x=st_plot[well]['X'], y=((-1)*st_plot[well]['Y']), c=st_plot[well][all_genes[i]], cmap=plt.get_cmap(color), s=10)
 				ax[a, b].set_title(title)

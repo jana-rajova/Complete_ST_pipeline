@@ -5,20 +5,30 @@ import os
 import argparse
 from sklearn.cluster import AgglomerativeClustering as ac
 import scanpy as sc
+from matplotlib import cm
 sc.set_figure_params(figsize=(5,5))
+change_to_original_data = False
 
-def plot_wells(adata):
-    wells = adata.obs["well"].unique().to_list()
-    for well in wells:
-        adata_well = adata[adata.obs["well"]==well, :]
-        # clust_max = int(adata.obs['cluster'].max())
-        sc.pl.scatter(adata_well, x='X', y='Y', color='cluster', size=250, show=False, title=well + " unified, coordinates", save=well + "_unified_coord.png", frameon=True)
+def plot_wells(adata, max_clusters):
+	wells = adata.obs["well"].unique().to_list()
+	print(os.getcwd())
+	# print(adata.obs)
+	cmap = cm.get_cmap('Spectral') # Colour map (there are many others)
+	cols = np.linspace(0, 1, max_clusters)
+	adata.obs['cluster'] = adata.obs['cluster'].astype('int')
+	cs = cmap(cols[adata.obs['cluster']-1])
+	for well in wells:
+		adata_well = adata[adata.obs["well"]==well, :]
+		sc.pl.scatter(adata_well, x='X', y='Y', color='cluster', color_map=cmap, palette=cs, size=250, show=False, title=well + " unified, coordinates", save=well + "_unified_coord.png", frameon=True)
+		sc.pl.scatter(adata_well, x='umap1', y='umap2', color='cluster', color_map=cmap, palette=cs, size=100, show=False, title=well + " unified, UMAP scatter", save=well + "_unified_UMAP_scatter.png", frameon=True)
 
-        sc.pl.scatter(adata_well, x='umap1', y='umap2', color='cluster', size=100, show=False, title=well + " unified, UMAP scatter", save=well + "_unified_UMAP_scatter.png", frameon=True)
-
-def plot_scatter(adata_x):
-	adata_x.obs['cluster'] = adata_x.obs['cluster'].astype('category')
-	sc.pl.scatter(adata_x, x='umap1', y='umap2', color='cluster', size=30, title="UMAP with unified clusters", save="UMAP_unified_cluster_map.png", show=False)
+def plot_scatter(adata_x, max_clusters):
+	cmap = cm.get_cmap('Spectral') # Colour map (there are many others)
+	cols = np.linspace(0, 1, max_clusters)
+	adata_x.obs['cluster'] = adata_x.obs['cluster'].astype('int')
+	cs = cmap(cols[adata_x.obs['cluster']-1])
+	#data_x.obs['cluster'] = adata_x.obs['cluster'].astype('category')
+	sc.pl.scatter(adata_x, x='umap1', y='umap2', color='cluster', color_map=cmap, palette=cs, size=30, title="UMAP with unified clusters", save="UMAP_unified_cluster_map.png", show=False)
 
 	sc.pl.scatter(adata_x, x='umap1', y='umap2', color='well', size=30, title="UMAP with coded wells", save="UMAP_unified_well_map.png", alpha=0.7, show=False)
 
@@ -37,16 +47,20 @@ def pick_cluster_non_singlet_cluster_list(gene, adata):
 	non_single_list = []
 	for clust in clusters:
 		arr = adata[adata.obs['cluster']==clust, adata.var['gene_symbol']==gene]
+		print(arr.X.shape[0])
 		if arr.X.shape[0] > 1:
 			non_single_list.append(clust)
 		clust_sum = np.sum(arr.X)/arr.X.shape[0]
 		if clust_sum > top_sum:
-			top_clust = [0]
+			#top_clust = [0]
 			top_sum = clust_sum
-			top_clust[0] = str(clust)
-	if not top_clust == 'all':
+			top_clust = list(str(clust))
+	if top_clust != 'all':
 		arr = adata[adata.obs['cluster']==int(top_clust[0]), adata.var['gene_symbol']==gene]
-	return top_clust, top_sum, non_single_list
+	non_single_list
+	print(adata.obs[adata.obs['cluster'].isin(non_single_list)])
+	adata = adata[adata.obs['cluster'].isin(non_single_list)]
+	return top_clust, top_sum, non_single_list, adata
 
 
 if __name__ == "__main__":
@@ -66,13 +80,26 @@ if __name__ == "__main__":
 
 	adata_scan = ad.read_h5ad(args.scanorama)
 	adata_desc = ad.read_h5ad(args.desc)
+	#adata_norm = ad.read_h5ad(args.output + "result_" + args.timestamp + "/adata_simple_export.h5ad")
 	print(adata_scan)
+	print(adata_desc.obs['feature'])
+	print(adata_desc.obs['feature'].dtype)
+	# print("norm")
+	# print(adata_norm)
+	# print(adata_norm.obs.shape)
+	print("scan")
+	print(adata_scan.obs.shape)
+	print("desc")
+	print(adata_desc.obs.shape)
+
+
+
 
 	adata_desc.obs['X'] = adata_desc.obs['feature'].str.extract('X([0-9.]+)', expand=True).astype('float32')
 	adata_desc.obs['Y'] = adata_desc.obs['feature'].str.extract('_([0-9.]+)', expand=True).astype('float32')
-	adata_desc.obs['umap1'] = adata_desc.obsm['X_umap0.9'][:, 0]
-	adata_desc.obs['umap2'] = adata_desc.obsm['X_umap0.9'][:, 1]
-	adata_desc.obs['cluster'] = adata_desc.obs['desc_0.9']
+	adata_desc.obs['umap1'] = adata_desc.obsm['X_umap0.8'][:, 0]
+	adata_desc.obs['umap2'] = adata_desc.obsm['X_umap0.8'][:, 1]
+	adata_desc.obs['cluster'] = adata_desc.obs['desc_0.8']
 	try:
 		del adata_scan.uns['cluster_colors']
 		del adata_scan.uns['well_colors']
@@ -81,8 +108,15 @@ if __name__ == "__main__":
 	if args.match != 0:
 		print("matching")
 		adata_scan = match_cluster_number_to_desc(adata_desc=adata_desc, adata_scan=adata_scan)
-	print(len(adata_desc.obs['cluster'].unique()), " clusters in DESC dataset")
-	print(len(adata_scan.obs['cluster'].unique()), " clusters in scanorama dataset")
+
+	if change_to_original_data == True:
+		for adata in [adata_scan, adata_desc]:
+			adata = ad.AnnData(X=adata_norm.X, var=adata_norm.var, obs=adata.obs)
+
+	desc_clusters_max = len(adata_desc.obs['cluster'].unique())
+	print(desc_clusters_max, " clusters in DESC dataset")
+	scan_clusters_max = len(adata_scan.obs['cluster'].unique())
+	print(scan_clusters_max, " clusters in scanorama dataset")
 	os.chdir(output_folder)
 	pd.DataFrame(adata_scan.X).to_csv("scan_X.csv")
 	pd.DataFrame(adata_desc.X).to_csv("desc_X.csv")
@@ -91,17 +125,18 @@ if __name__ == "__main__":
 	# adata_desc.write("DESC_anndata_final_cluster.h5ad")
 
 		
-	for i, j in zip(["DESC_plot", "scanorama_plot"], [adata_desc, adata_scan]):
+	for i, j, k in zip(["DESC_plot", "scanorama_plot"], [adata_desc, adata_scan], [desc_clusters_max, scan_clusters_max]):
 		if not os.path.isdir(i):
 			os.mkdir(i)
 		os.chdir(i)
-		plot_scatter(j)
-		plot_wells(j)
-		top_clust, top_sum, non_single_list = pick_cluster_non_singlet_cluster_list(gene=args.gene, adata=j)
+		plot_scatter(j, k)
+		plot_wells(j, k)
+		top_clust, top_sum, non_single_list, j = pick_cluster_non_singlet_cluster_list(gene=args.gene, adata=j)
+		print(non_single_list)
+		print(j.obs['cluster'].unique())
 		print("The top cluster for ", args.gene, " is cluster ", top_clust[0], "with the average of ", top_sum, " transcripts per feature!")
 		j.obs['cluster'] =j.obs['cluster'].astype('str').astype('category')
-
-		sc.tl.rank_genes_groups(j, n_genes=50, groupby='cluster', method='wilcoxon', key_added = "wilcoxon_all", groups=non_single_list)
+		sc.tl.rank_genes_groups(j, n_genes=50, groupby='cluster', method='wilcoxon', key_added = "wilcoxon_all", groups="all")
 		sc.pl.rank_genes_groups(j, key="wilcoxon_all", save=i + "_DE_genes_by_rank_all.png", show=False)
 		sc.tl.rank_genes_groups(j, n_genes=50, groupby='cluster', method='wilcoxon', key_added = "wilcoxon", groups=top_clust)
 		sc.pl.rank_genes_groups(j, key="wilcoxon", save=i + "_DE_genes_by_rank_top.png", show=False)

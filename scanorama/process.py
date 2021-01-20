@@ -8,7 +8,7 @@ import sys
 
 from scanorama import merge_datasets
 
-MIN_TRANSCRIPTS = 100
+MIN_TRANSCRIPTS = 1
 
 def load_tab(fname, max_genes=40000):
     if fname.endswith('.gz'):
@@ -23,6 +23,9 @@ def load_tab(fname, max_genes=40000):
             header = f.readline().rstrip().split('\t')
 
         cells = header[1:]
+        #print("CELLLS")
+        #print(cells)
+        #print(len(cells))
         X = np.zeros((len(cells), max_genes))
         genes = []
         for i, line in enumerate(f):
@@ -122,10 +125,16 @@ def load_h5(fname, genome='mm10'):
 
 def process_tab(fname, min_trans=MIN_TRANSCRIPTS):
     X, cells, genes = load_tab(fname)
+    # print("X in process_tab")
+    # print(X.shape)
 
     gt_idx = [ i for i, s in enumerate(np.sum(X != 0, axis=1))
                if s >= min_trans ]
     X = X[gt_idx, :]
+    # print(len(gt_idx))
+    # print("X in process_tab after gtx_id")
+    # print(X.shape)
+
     cells = cells[gt_idx]
     if len(gt_idx) == 0:
         print('Warning: 0 cells passed QC in {}'.format(fname))
@@ -145,7 +154,9 @@ def process_tab(fname, min_trans=MIN_TRANSCRIPTS):
 
     cache_fname = cache_prefix + '.npz'
     np.savez(cache_fname, X=X, genes=genes)
-    print("len cells", len(cells))
+    # print("len cells", len(cells))
+    # print("final X.shape")
+    # print(X.shape)
     return X, cells, genes
 
 def process_mtx(dname, min_trans=MIN_TRANSCRIPTS):
@@ -193,6 +204,8 @@ def load_data(name):
     elif os.path.isfile(name + '.npz'):
         data = np.load(name + '.npz')
         X = data['X']
+        # print("X SHAPE")
+        # print(X.shape)
         genes = data['genes']
         data.close()
     elif os.path.isfile(name + '/tab.npz'):
@@ -201,19 +214,19 @@ def load_data(name):
             genes = np.array(f.read().rstrip().split())
     else:
         sys.stderr.write('Could not find: {}\n'.format(name))
-        print(os.getcwd())
+        # print(os.getcwd())
         exit(1)
     genes = np.array([ gene.upper() for gene in genes ])
     return X, genes
 
 def load_names(data_names, norm=True, log1p=False, verbose=True):
     # Load datasets.
-    print("reached load_names")
+    # print("reached load_names")
     datasets = []
     genes_list = []
     n_cells = 0
     for name in data_names:
-        print("the name in load_names is", name)
+        # print("the name in load_names is", name)
         X_i, genes_i = load_data(name)
         if norm:
             X_i = normalize(X_i, axis=1)
@@ -271,8 +284,6 @@ def process(data_names, min_trans=MIN_TRANSCRIPTS):
             process_tab(name + '.txt.gz', min_trans=min_trans)
         elif os.path.isfile(name + '.tsv'):
             process_tab(name + '.tsv', min_trans=min_trans)
-        elif os.path.isfile(name + '.csv'):
-            process_tab(name + '.csv', min_trans=min_trans)
         elif os.path.isfile(name + '.tsv.gz'):
             process_tab(name + '.tsv.gz', min_trans=min_trans)
         else:

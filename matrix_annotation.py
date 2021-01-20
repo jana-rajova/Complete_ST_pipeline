@@ -6,17 +6,18 @@ import argparse
 from matplotlib import pyplot as plt
 import seaborn as sns
 from datetime import datetime
+from numba import jit
 
 # The script needs three input files. The matrix, Ensembl id to symbol dataframe
 # and new positions file
 log = list()
 
-def remove_ambiguous(st_file, log):
-	amb_entries = list(filter(lambda symbol:(symbol.startswith("__ambiguous")), st_file.index.to_list()))
-	log.append("The following ambiguous entries were removed from the dataframe")
-	log.append(amb_entries)
-	st_file.drop(amb_entries, axis=0, inplace=True)
-	return log
+def remove_ambiguous(st_file):
+	amb_entries = list(filter(lambda symbol:(symbol.startswith("__")), st_file.columns))
+	#print(amb_entries)
+	st_file.drop(amb_entries, axis=1, inplace=True)
+	print(st_file.shape)
+	return amb_entries
 
 
 def df_to_parts(matrix):
@@ -28,26 +29,22 @@ def df_to_parts(matrix):
 	return genes, positions, matrix
 
 
-def ensembl_to_symbol(matrix,ensembl_location, log=log):
+def ensembl_to_symbol(sample, matrix,ensembl_location, log=log):
 	"""
 	Translates ensembl ids into a gene name to avoid species bias
 	"""
 	print("Translating ensembl IDs to gene names and merging duplicate columns")
-	gene_df = pd.read_csv(ensembl_location,header=0, index_col=False).to_numpy()
-	# print(type(gene_df))
-	# print(gene_df)
-	# print(gene_df.shape)
-	genes_ens = matrix.iloc[0,:].values.tolist()
+	gene_np = pd.read_csv(ensembl_location,header=0, index_col=False).to_numpy().astype('str')
+	genes_ens = matrix.iloc[0,:].values.astype('str')
+	print("gene_ens", genes_ens.dtype)
 	counter_fin=len(genes_ens)
 	counter_pos = 0
-	# genes_symb = genes_ens
-	#genes_ens = genes_ens[:10]
-	genes_symb = list()
+	genes_symb = []
 	for i in genes_ens:
 		#print(i)
 		counter_pos += 1
 		try:
-			gene = gene_df[np.where(gene_df == i)[0], 0].item()
+			gene = gene_np[np.where(gene_np == i)[0], 0].item()
 			#print(gene)
 			# gene = gene_df[gene_df.eq(i).any(1)]["Gene name"].item()
 		except:
@@ -63,20 +60,33 @@ def ensembl_to_symbol(matrix,ensembl_location, log=log):
 	duplicates = set([x for x in genes_symb if genes_symb.count(x)>1])
 	matrix.columns = genes_symb
 	matrix = matrix.iloc[1:,:].astype("float64")
-	print(matrix.shape)
+	# print(matrix.shape)
 	matrix = matrix.groupby(matrix.columns, axis=1).sum()
-	log = remove_ambiguous(matrix)
-	print(matrix.shape)
+	print("remove ambiguous")
+	amb_entries = remove_ambiguous(matrix)
+	print(matrix)
+	df_amb = pd.DataFrame(amb_entries)
+	print(df_amb)
+	df_amb.to_csv(args.output + sample + "_ambiguous_entries_removed.csv", index=False, header=False)
+
 	print("ensembl length: ", len(set(genes_ens)), "; symbol length: ", len(set(genes_symb)), sep='')
 	log.append("Ensembl ID to Gene Name translation:")
-	log.append(duplicates)
-	duplicate_pos = len(log)
-	log.insert(0, duplicate_pos)
-	# print("Gene names appearing more than once:")
-	# print(duplicates)
+	df_duplicates = pd.DataFrame(duplicates)
+	df_duplicates.to_csv(args.output + sample + "_duplicate genes.csv", index=False, header=False)
 	log.append(str(len(set(genes_ens))) +  " Ensembl IDs were translated into " + str(len(set(genes_symb))) + " gene names")
-	#matrix.to_csv("../data/ST_files/temp/" + sample + "_stdata_temp.csv")
 	return matrix, log
+
+@jit(nopython=True)
+def rename_position_index(pos_array, x_pos, y_pos):
+	#print(pos_array)
+	#print("processing", x_pos)
+	if pos_array.size == 0:
+		pos_array = np.array([[x_pos, y_pos]])
+		print("initializing new posistion array")
+			#print(pos_array)
+	elif pos_array.size > 0:
+		pos_array = np.append(pos_array, np.array([[x_pos, y_pos]]), axis=0)
+	return pos_array
 
 
 def position_correction(matrix, position_df, drop_outside=True, log=log):
@@ -86,19 +96,19 @@ def position_correction(matrix, position_df, drop_outside=True, log=log):
 	print("The positions will be updated")
 	counter = 0
 	list_updated_pos = ["positions"]
-	pos_array = None
+	pos_array = np.array([[]], dtype=int)
 	for pos in matrix.index[1:]:
 		search = re.search("([0-9]+)x([0-9]+)", pos)
-		if not pos_array is None:
-			pos_array = np.append(pos_array, [[int(search.group(1)),int(search.group(2))]], axis=0)
-			#print(pos_array)
-		else:
-			pos_array = np.array([[int(search.group(1)),int(search.group(2))]])
-			#print(pos_array)
+		x_pos = int(search.group(1))
+		y_pos = int(search.group(2))
+		# print("pos")
+		# print(x_pos, y_pos)
+		# print(pos_array)
+		pos_array = rename_position_index(pos_array, x_pos, y_pos)
 
 	for i in range(len(pos_array)):
-		new_coordinates = position_df[(position_df['x']== pos_array[i,0]) & (position_df['y'] == pos_array[i,1])]
-		if len(new_coordinates)>0:
+		new_coordinates = position_df[(position_df['x'] == pos_array[i,0]) & (position_df['y'] == pos_array[i,1])]
+		if len(new_coordinates) > 0:
 			list_updated_pos.append("X" + str(float(new_coordinates.get(key = "new_x").values.round(2))) + "_" + str(float(new_coordinates.get(key = "new_y").values.round(2))))
 		elif drop_outside == True:
 			matrix.drop(str(pos_array[i,0]) + "x" + str(pos_array[i,1]), axis=0, inplace=True)
@@ -125,20 +135,20 @@ def filter_by_expression(matrix, min_row_count=300, min_feat_count=2, min_featur
 	expr_data.sort_values(ascending=False, inplace=True)
 	# print(expr_data)
 	# print(type(expr_data))
-	print(os.getcwd())
+	# print(os.getcwd())
 	expr_data.to_csv(args.output + sample + "_transcripts_per_feature.csv")
 	maxim = len(matrix.columns)
 	counter = 0
-	list_to_drop = list()
+	list_to_drop_row = list()
 	for i in sums.index.tolist():
 		# print(i)
 		# count_arr = np.append()
 		if sums[i]<min_row_count:
 			counter += 1
-			list_to_drop.append(i)
+			list_to_drop_row.append(i)
 	# print(list_to_drop)
 	# print(type(list_to_drop[0]))
-	matrix.drop(list_to_drop, axis=0, inplace=True)
+	
 
 	print(counter, " row(s) droppped as they contained less than the minimum set ", min_row_count, " transcrips", sep="")
 	log.append("Filtering by expression parameters:")
@@ -146,9 +156,12 @@ def filter_by_expression(matrix, min_row_count=300, min_feat_count=2, min_featur
 	log.append(str(counter) + " row(s) droppped as they contained less than the minimum set " + str(min_row_count) + " transcrips")
 	counter = 0
 	dr_counter = 0
-
+	# print(matrix.iloc[:5, :5])
+	# print(matrix.mask(matrix >= min_feat_count, np.nan).iloc[:5, :5])
+	# print(matrix.mask(matrix >= min_feat_count, np.nan).isnull().iloc[:5, :5])
+	# print(matrix.mask(matrix >= min_feat_count, np.nan).isnull().sum(axis=0).iloc[:5])
 	sums = matrix.mask(matrix >= min_feat_count, np.nan).isnull().sum(axis=0)
-	list_to_drop = list()
+	list_to_drop_col = list()
 	expr_data = matrix.sum(axis=0)
 	expr_data.sort_values(ascending=False, inplace=True)
 	expr_data.to_csv(args.output + sample + "_transcripts_per_gene.csv")
@@ -160,8 +173,9 @@ def filter_by_expression(matrix, min_row_count=300, min_feat_count=2, min_featur
 			print("processing column ", counter, "/", maxim, sep="")
 		if not sums[i] >= min_features:
 			dr_counter += 1
-			list_to_drop.append(i)
-	matrix.drop(list_to_drop, axis=1, inplace=True)
+			list_to_drop_col.append(i)
+	matrix.drop(list_to_drop_col, axis=1, inplace=True)
+	matrix.drop(list_to_drop_row, axis=0, inplace=True)
 
 	print(dr_counter, " gene(s) dropped as their expression was not more than ", min_feat_count, " in more than ", min_features, " features", sep="")
 	log.append("Minimum count at least " + str(min_feat_count) + " in at least " + str(min_features) + " features")
@@ -284,10 +298,10 @@ if __name__ == '__main__':
 	parser.add_argument("-s", "--selection", default=True, type=bool, help="Use all spot or only under the tissue (then False)")
 	parser.add_argument("-t", "--timestamp", 
 		type=str, help="timestamp")
-	parser.add_argument("--output", type=str, help="path to the output matrix files folder", default="../data/ST_files/ST_matrix_processed_test/")
+	parser.add_argument("-o", "--output", type=str, help="path to the output matrix files folder", default="../data/ST_files/ST_matrix_processed_new/")
 	parser.add_argument("--original_matrix_folder", type=str, default="../data/ST_files/original_ST_all/")
-	parser.add_argument("--feature_folder", type=str, default="../data/ST_files/original_features/")
-	parser.add_argument("-c", "--current_folder", type=str, default="/mnt/UserDataNAS/OrganizedSeqFiles/ST/Complete_ST_pipeline/bin")
+	parser.add_argument("--feature_folder", type=str, default="../../Images_rev1/")
+	parser.add_argument("-c", "--current_folder", type=str, default="/media/MNM-NetStorage/OrganizedSeqFiles/ST/Complete_ST_pipeline/bin/")
 	args = parser.parse_args()
 
 	samples = list()
@@ -322,7 +336,7 @@ if __name__ == '__main__':
 			# 	position_df = pd.read_csv(features, header=0, index_col=False)
 			# except:
 			features =  args.feature_folder + sample + "-spot_data-" + feat + ".tsv"
-			print(features)
+			# print(features)
 			position_df = pd.read_csv(features, header=0, index_col=False, delimiter="\t")
 			log.append("Spot_data: " + features)
 			print(sample, feat, " features' positions loaded!")
@@ -332,13 +346,13 @@ if __name__ == '__main__':
 		except:
 			print(sample, "Sample loading unsuccessful!")
 			execute = False
-		print("execute: ", execute)
-		#matrix = matrix.iloc[:500,:2000]
+		# print("execute: ", execute)
+		#matrix = matrix.iloc[:20,:10000]
 
 		"""
 		Filtering selections:
 		"""
-		min_row_count = 100
+		min_row_count = 300
 		min_feat_count = 2
 		min_features = 2
 
@@ -346,23 +360,23 @@ if __name__ == '__main__':
 			if not os.path.isdir(args.output):
 				print("Creating output folder anew!")
 				os.makedirs(args.output)
-			print(matrix.shape)
+			# print(matrix.shape)
 			matrix, log = position_correction(matrix, position_df, drop_outside=args.selection, log=log)
-			print(matrix.iloc[:5,:3])
+			# print(matrix.iloc[:5,:3])
 			print(sample, "'s feature selection and name correction done!", sep='')
-			matrix, log = ensembl_to_symbol(matrix, ensembl_location, log=log)
-			print(matrix.iloc[:5,:3])
+			matrix, log = ensembl_to_symbol(sample, matrix, ensembl_location, log=log)
+			# print(matrix.iloc[:5,:3])
 			print(sample, " Ensemb IDs translated done!", sep='')
 			log = quality_control_graph("Before QC", matrix=matrix, cutoff=min_row_count, log=log)
 			matrix, log = filter_by_expression(matrix, min_row_count=min_row_count, min_feat_count=min_feat_count, min_features=min_features, log=log)
-			print(matrix.iloc[:5,:3])
+			# print(matrix.iloc[:5,:3])
 			print(sample, " gene expression filtered!", sep='')
 			log = quality_control_graph("After QC", matrix=matrix, cutoff=min_row_count, log=log)
-			print(matrix.shape)
+			# print(matrix.shape)
 			matrix = matrix.transpose()
 			log.append("The final matrix dimensions are: " + str(matrix.shape))
 			#print(os.getcwd())
-			matrix.to_csv(args.output + sample + "_stdata.tsv", delimiter="\t")
+			matrix.to_csv(args.output + sample + "_stdata.tsv", sep="\t")
 			print(sample, "COMPLETED")
 			end = datetime.now()
 			print("Finished: ", end, sep='')
@@ -370,10 +384,10 @@ if __name__ == '__main__':
 			log.append("Duration: " + str(end-start))
 			print("Duration: ", str(end-start), sep='')
 
-			log_t = log.pop(int(log[0]))
-			log.pop(0)
-			log.append(log_t)
-			log.insert(-1, "Gene names appearing more than once:")
+			# log_t = log.pop(int(log[0]))
+			# log.pop(0)
+			# log.append(log_t)
+			# log.insert(-1, "Gene names appearing more than once:")
 			with open (args.output + sample + "_log.txt", "w+") as l:
 				for a in log:
 					l.write(str(a) + "\n")

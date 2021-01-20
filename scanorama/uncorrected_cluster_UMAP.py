@@ -36,7 +36,7 @@ def initiate_anndata_file(csv_list, path):
     print("adata creation parameters")
     #rint(csv_list)
     #print(path + csv_list + naming)
-    adata = Utils.join_df_to_anndata(sample_list=path + csv_list, path=path, naming="", features=0)
+    adata = Utils.join_df_to_anndata(sample_list=csv_list, path=path, naming="", features=0)
 
     return adata
 
@@ -44,6 +44,9 @@ def plot_well(adata, df_dir):
     wells = set(adata.obs["well"].to_list())
     for well in wells:
         adata_well = adata[adata.obs["well"]==well, :]
+        # clust_max = int(adata.obs['cluster'].max())
+        #print("AND  THEEEEEN...?")
+        #print(adata_well.obs['cluster'])
         well = re.search('^([A-Z0-9]+_[A-Z0-9]{2})', well).group(1)
         sc.pl.scatter(adata_well, x='X', y='Y', color='cluster', size=250, show=False, title=well + " unified, coordinates", save="_unified_coord_" + well + ".png", frameon=True)
         adata_well.obs[['feature', 'cluster']].to_csv(df_dir + well + "_scanorama_cluster.tsv", sep="\t")
@@ -51,6 +54,11 @@ def plot_well(adata, df_dir):
 
 def plot_separate(adata):
     wells = set(adata.obs["well"].to_list())
+    if not os.path.isdir("figures/well-unique/"):
+        os.makedirs("figures/well-unique/")
+    if not os.path.isdir("figures/unified/"):
+        os.makedirs("figures/unified/")
+    
     for well in wells:
         adata_well = adata[adata.obs["well"]==well, :]
         sc.pl.scatter(adata_well, x='umap_sep_x', y='umap_sep_y', size=100, color='cluster_sep', show=False, save="_well-unique_UMAP_scatter_" + well + ".png", title=well + " well-unique UMAP scatter", frameon=True)
@@ -99,24 +107,28 @@ def umap_separate(adata, thresh_sep):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Add threshold and what are the dimensions of the scanorama dataset in quesion')
     parser.add_argument('--threshold_united', '-u', type=int, help='threshold for cluster assignment with all wells clustered together')
-    parser.add_argument('--threshold_separate', '-s', type=int, default=3, help='threshold for cluster assignment in clustering with separate wells')
+    #parser.add_argument('--threshold_separate', '-s', type=int, default=3, help='threshold for cluster assignment in clustering with separate wells')
     # # parser.add_argument('-d', '--dimensions', type=int, help='how many dimensions does the scanorama file have?')
     # parser.add_argument('-c', '--clustering_dimensions', type=int, help='in how many dimensions does the ahc algorithm cluster?')
     parser.add_argument('-t', '--timestamp', type=str, help='scanorama result file timestamp')
     parser.add_argument("-o", "--output", type=str, help="output folder", default="../results/")
-    parser.add_argument("--output_dataframe", type= str, default="CN56_scanorama_df.tsv")
+    parser.add_argument("-f", "--stfile", type=str, default="/media/MNM-NetStorage/OrganizedSeqFiles/ST/Complete_ST_pipeline/data/ST_files/SN-TX_all.txt")
+    parser.add_argument("--output_dataframe", type=str, default="SN-TX-c_uncorrected_df.tsv")
     args = parser.parse_args()
     sc.set_figure_params(figsize=(5,5))
 
-    output_folder = args.output + "result_" +  args.timestamp + "/scanorama_cluster_UMAP_output"
+    output_folder = args.output + "result_" +  args.timestamp + "/uncorrrected_cluster_UMAP_output"
     if not os.path.isdir(output_folder):
-        os.mkdir(output_folder)
+        os.makedirs(output_folder)
     os.chdir(output_folder)
     print("Current  directory: ", os.getcwd())
 
-    adata = initiate_anndata_file(csv_list="csv_files.txt", path="../scanorama_output/")
+    adata = Utils.join_df_to_anndata(sample_list=args.stfile, 
+    path="/media/MNM-NetStorage/OrganizedSeqFiles/ST/Complete_ST_pipeline/data/ST_files/ST_matrix_processed/",
+    naming="_stdata.tsv", 
+    features=1)
 
-    adata = umap_separate(adata, thresh_sep=args.threshold_separate)
+    # adata = umap_separate(adata, thresh_sep=args.threshold_separate)
 
     adata.obs['well_id'] = adata.obs['well'].cat.codes
     print( adata.obs['well_id'])
@@ -135,20 +147,22 @@ if __name__ == '__main__':
     adata.obs['cluster'] = adata.obs['cluster'].astype('category')
 
     # export clusters and features
-    df_dir = "scanorama_cluster/"
+    df_dir = "uncorrected_cluster/"
     if not os.path.isdir (df_dir):
         os.mkdir(df_dir)
+    print("saving final dataframe in", os.getcwd())
     adata.obs.to_csv(args.output_dataframe, sep='\t', header=True)
 
     print(adata)
     print(adata.obs.head())
     print(adata.obs.columns)
+
         
     
-    plot_separate(adata)
+    # plot_separate(adata)
     plot_well(adata, df_dir=df_dir)
     plot_scatter(adata)
-    adata.write("anndata_scanorama_clustr_combined-threshold-" + str(args.threshold_united) + ".h5ad")
+    adata.write("anndata_uncorrected_clustr_combined-threshold-" + str(args.threshold_united) + ".h5ad")
 
 
 

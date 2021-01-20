@@ -17,7 +17,7 @@ parser =  argparse.ArgumentParser(description="Add inital parameters")
 parser.add_argument("--hvg", type=int, help="how many highly variable genes do you want to include?")
 parser.add_argument('-f', '--csv_file', type=str, help='csv file list')
 parser.add_argument("-t", "--timestamp", type=str)
-parser.add_argument("-o", "--output", type=str, help="output folder")
+parser.add_argument("-o", "--output", type=str, help="output folder", default="../results/")
 
 args = parser.parse_args()
 
@@ -87,15 +87,18 @@ if __name__ == '__main__':
 #    print(" Now iterating with DIMRED = ", DIMRED, 'type', type(DIMRED)
 #    from config import data_names
     data_names = []
+    print(os.getcwd())
     with open(args.csv_file, 'r') as f:
         for line in f:
             data_names.append(line.rstrip())
         f.close
     print('Data names loaded')
     print(data_names)
-    print(os.getcwd())
+    # print(os.getcwd())
     datasets, genes_list, n_cells = load_names(data_names)
-    print(data_names)
+    # print(n_cells)
+    # print(datasets)
+    # print(data_names)
     t0 = time()
 #        print('UNION = ', UNION)
 # in sc.correct, the added genes argument and path might not be utilized! check that!
@@ -116,19 +119,33 @@ if __name__ == '__main__':
         os.makedirs(path1)
     os.chdir(path1)
     i = 0
-    sample_list=[]
-    print("writing files: ", dimred, " into: ", path1, sep="")
+    sample_list = []
+    sample_full_list = []
+    # print("dataset")
+    # print(datasets)
+    # print("dataset_dimred")
+    # print(datasets_dimred)
+    # print("writing files: ", dimred, " into: ", path1, sep="")
     for key in dict_pos.keys():
 #   print(datasets_dimred[0])
-        csv = str(key) + "_dimred_union-" + str(UNION) + str(dimred) + '.csv'
+        csv = str(key) + "_dimred_dataset-" + str(dimred) + '.csv'
         df = pd.DataFrame(datasets_dimred[i], columns=genes)
-        print('csv: ', csv)
-        print("key length", len(dict_pos[key]))
-        print("dimred shape:", df.shape)
+        # print('csv: ', csv)
+        # print("key length", len(dict_pos[key]))
+        # print("dimred shape:", df.shape)
+        df.insert(0, "position", dict_pos[key], True)
+        df.to_csv(csv, index=0, header=True)
+
+        sample_list.append(csv)
+        csv = str(key) + "_dataset-full_union-scanorama.csv"
+        df = pd.DataFrame(datasets[i], columns=genes)
+        # print('csv: ', csv)
+        # print("key length", len(dict_pos[key]))
+        # print("dataset shape:", df.shape)
         df.insert(0, "position", dict_pos[key], True)
         df.to_csv(csv, index=0, header=True)
         i += 1
-        sample_list.append(csv)
+        sample_full_list.append(csv)
     with open('heavy_panorama_' + str(HVG) + 'log.txt', 'w') as log:
         log.write("HVG: " +  str(HVG) + "\n")
         log.write("KEEP_DIMENSIONS, " + str(KEEP_DIMENSIONS) + "\n")

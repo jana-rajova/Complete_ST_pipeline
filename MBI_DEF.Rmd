@@ -1,0 +1,290 @@
+---
+title: "Report template"
+author: "Authors"
+date: "Date prepared"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    theme: united
+    highlight: pygments
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+if (!requireNamespace("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+knitr::opts_knit$set(root.dir = "C:/Users/Amanda/Personal/course_materials/MBI_Statistics/")
+r <- getOption("repos")
+r["CRAN"] <- "https://ftp.acc.umu.se/mirror/CRAN/"
+options(repos = r)
+
+if (!requireNamespace("BiocManager", quietly = TRUE))
+    install.packages("BiocManager")
+BiocManager::install(version = "3.11")
+BiocManager::install("DESeq2")
+BiocManager::install("ArrayExpress")
+install.packages("dplyr")
+install.packages("pheatmap")
+install.packages("ggrepel")
+install.packages("RColorBrewer")
+BiocManager::install("limma")
+BiocManager::install("edgeR")
+install.packages("enrichR")
+install.packages("gridExtra")
+install.packages("stringr")
+
+library(ArrayExpress)
+library(dplyr)
+library(DESeq2)
+library(pheatmap)
+library(ggplot2)
+library(ggrepel)
+library(RColorBrewer)
+library(limma)
+library(edgeR)
+library(enrichR)
+library(gridExtra)
+library(stringr)
+```
+
+### Preamble
+
+The following exercises are based on the lecture material covered on Day 2 of the course. This both serves as a ha    nds-on session to practice what you have learned and as a starting point for your course project. You will work on either the same dataset that we used during the lecture or your own, assuming that you have an RNA-seq count dataset. The exercises walk you through the steps required for the analysis, but your project also includes exploring different options, e.g. different analysis methods, different parameters and visualization. Therefore you do not need to strictly follow the methods and parameters used in the lecture. On the contrary, you are encouraged to explore alternatives and discuss the differences observed.
+
+### Part 1: Data import and QC
+
+1. First you need to choose the dataset to use for your course project. If you have your own data you are encouraged to use it. Otherwise you can go with the dataset used in the lecture (or another interesting public dataset). The exercises below use the lecture dataset but look at FF and FFPE samples from prostate cancer instead. Depending on the study design of your dataset, you need to adjust the code to include the relevant factors in your sample table.
+
+```{r Loading AE data}
+files <-getAE(accession ="E-MTAB-2523", path ="data", type ="processed")
+list.files("data")
+```
+```{r Importing data into count and sample table}
+#Import data
+countTable <-read.table("data/EGAD00001000830_Total_Exon_Reads_The_paired_FF-FFPE_prostate_set.txt",as.is =TRUE, header =TRUE, sep ="\t", row.names =1)
+sampleTable <-read.table("data/E-MTAB-2523.sdrf.txt", as.is =TRUE, header =TRUE, sep ="\t")
+#Inspect dataset
+dim(countTable)
+
+```
+2. Before starting with the analysis, load all required packages to make sure you have everything you need. If any package generates an error message, install and load it. You are strongly encouraged to work in RMarkdown since this allows you to knit a report containing R code, plots, tables and explanations in text. The project report that is to be submitted in Canvas should contain code used, plots and tables generated, as well as text explaining briefly what was done and how to interpret the results.
+
+3. In case you are using public data, download it to your computer. The lecture dataset is in ArrayExpress and is downloaded using the accession number in the slides. Another dataset can be downloaded by simply changing the accession number.
+
+4. Once you have the data on disk, import the counts and sample table into R. When using the lecture dataset, make sure you get the right file since there are several once. For the exercises, you can use the Total Exon Reads paired FF-FFPE prostate set. We will use this to compare samples that have been fresh frozen (FF) with the formalin-fixed paraffin-embedded (FFPE) ones.
+
+5. Inspect the count data and sample table to get a feel for what they contain. It is also important to verify that has imported the data correctly, e.g. that the column names are not the first row in the count table. When you are satisfied with the import, prepare sample annotation for the downstream analysis. This step depends entirely on the data you are working with and its study design. For the lecture dataset, we have a simple case-control design with two sample groups that are compared. To compare FF and FFPE samples, your sample table should include sample name and individual (as in the lecture), but a column called storage instead of disease. The storage column will be a factor of two possible values: FF and FFPE. Inspect the sample table to make sure that it contains the necessary columns and that the samples have been labeled correctly.
+
+```{r}
+table(sampleTable$Characteristics.organism.part.)
+table(sampleTable$Characteristics.individual.)
+table(sampleTable$Characteristics.sex.)
+table(sampleTable$Characteristics.disease.)
+
+#Prepare sample annotation
+sampleTable <-sampleTable %>%   
+  filter(
+    Characteristics.organism.part.=="prostate",
+    grepl("[FF, FFPE]" ,Comment.ENA_ALIAS.),
+    !duplicated(Comment.ENA_ALIAS.)) %>%
+  transmute(
+    sample = Comment.ENA_ALIAS.,
+    individual = factor(Characteristics.individual.),
+    storage = as.character(Comment.ENA_ALIAS.))
+sampleTable$storage <- gsub("P[1-9]_F", "F", as.matrix(sampleTable$storage))
+sampleTable$storage <- as.factor(sampleTable$storage)
+knitr::kable(sampleTable)
+```
+
+6. When satisfied with the sample table, you need to make sure that it is in agreement with the count data. That is, the sample table should contains the same samples in the same order as in the count table. A wrong order could result in that samples are labeled wrong in the QC plots, producing strange and incorrect results. It would also invalidate the downstream analysis by not grouping the samples correctly. Inspect the count and sample tables again after this step to ensure that everything looks good.
+
+```{r}
+#Synchonize count data with sample table
+countTable <- countTable[ , pmatch(paste0(sampleTable$sample, "_") , colnames(countTable))]
+colnames(countTable) <-sampleTable$sample
+countTable[1:5, 1:5]
+```
+
+7. Next we will uses log2 CPM to filter low counts. This step is used to remove non- or very low-expressed genes, which are not interesting to include in the analysis. Genes at the lower end of the count distribution are susceptible to noise since a single read can make a large difference in terms of mean gene expression. There is no exact consensus on where to put the threshold for expression but a good way is to inspect the CPM histogram and choose a value that gets rid of the left peak in the distribution. This peak represents non- and/or very low-expressed genes. Inspect the count table to see how many genes are filtered out and that a reasonable number of genes remain for the downstream analysis.
+
+```{r}
+#Filter low counts
+meanLog2CPM <-rowMeans(log2(cpm(countTable) +1))
+hist(meanLog2CPM)
+sum(meanLog2CPM <=1)
+countTable <-countTable[meanLog2CPM >1, ]
+dim(countTable)
+```
+
+8. Now you can prepare the count data for quality control by creating a DESeqDataSet. This allows you to normalize the data with rlog, which is used to correct the counts for sequencing depth (number of counts in each sample) and to remove the effect of heteroscedasticity (that variance increases with increasing mean expression). Note that the normalized counts should only be used for QC, not the statistical analysis.
+
+```{r}
+#Prepare data for QC
+dds <-DESeqDataSetFromMatrix(as.matrix(countTable),design =~0+storage +individual,colData =sampleTable)
+print(dds)
+#Normalize
+normCounts <-rlog(dds, blind =TRUE)
+assay(normCounts)[1:5, 1:5]
+#Distribution
+hist(assay(normCounts), main ="E-MTAB-2523")
+```
+
+9. Use the normalized counts to produce a histogram over the distribution, a sample correlation heatmap and a PCA plot. This will inform you whether the data has a distribution that fulfills the assumption of the modeling approach, and this is an often-neglected step in QC. The sample correlation heatmap gives you a good view of the correlations between sample, both within and between groups. This can be used as a general QC for the data to make sure the correlations are about what you would except, and as a means to detect outlier samples. The PCA plot is good for outlier detection as well, but is also used to assess whether there are any batch effects in the data. A batch effect could arise for example if data comes from multiple labs, different experimental runs, or if different protocols have been used, for instance. High-throughput experiments are highly susceptible to batch effects due to technical variations in the experiment, so it is always very important to assess this before performing the downstream analysis.
+
+```{r}
+#Sample heatmaps
+sampleDist <-cor(assay(normCounts), method ="spearman")
+sampleColor <-brewer.pal(3, "Accent")[1:2]
+names(sampleColor) <-levels(sampleTable$storage)
+pheatmap(sampleDist,
+         clustering_distance_rows =as.dist(1-sampleDist),
+         clustering_distance_cols =as.dist(1-sampleDist),
+         annotation_col=data.frame(storage  = sampleTable$storage,
+                                   row.names = sampleTable$sample),
+         annotation_colors=list(storage = sampleColor))
+
+
+#Sample PCA
+pcaRes <-prcomp(t(assay(normCounts)))
+varExp <-round(pcaRes$sdev^2/sum(pcaRes$sdev^2) *100)
+pcaDF <-data.frame(
+  PC1 =pcaRes$x[, 1],
+  PC2 =pcaRes$x[, 2],
+  storage =sampleTable$storage,
+  Sample =sampleTable$sample)
+pcaPlot <-ggplot(
+  data =pcaDF,
+  mapping =aes(x =PC1, y =PC2, color =storage, label =Sample)) + geom_point(size =3) + 
+  geom_text_repel(size =4) +
+  labs(x =paste0("PC1 (", varExp[1], " %)"), y =paste0("PC2 (", varExp[2], " %)")) +
+  theme_minimal() +theme(axis.text =element_text(size =12), legend.text =element_text(size =10))+
+  scale_color_manual(values =brewer.pal(3, "Accent"))
+print(pcaPlot)
+```
+
+10. Look at the sample heatmap and PCA plot to see if you can detect any outliers. These are samples that are very different from the others in the same group (e.g. FF or FFPE). What qualifies as an outlier is subjective and often there can be a gray zone of how different the samples are expected to be. For example, you would expect much more heterogeneity in data from clinical samples compared to if you work with cell cultures. As a rule of thumb, you can look for samples that cluster in the wrong group in the heatmap, or samples that are very far away from the others in the PCA. If you have paired data, you may see that samples from one individual stick out, and in this case they might be removed.
+
+The data from FF and FFPE tissues seems quite divided between FF and FFPE samples, without obvious outliers outside of P2_FFPE, which is closer to the FF samples. 
+
+Even if there is a tumor heterogeneity playing a role, it is suspicious that all the FF samples and all the FFPE samples cluster together. Suggesting that there are differences arising due to the storage of the samples.
+
+```{r}
+#Remove outlier
+outlierInd <-grep("P2_FFPE", colnames(countTable))
+countTable <-countTable[, -outlierInd]
+sampleTable <-sampleTable[-outlierInd, ]
+sampleTable <-droplevels(sampleTable)
+colnames(countTable)
+```
+
+### Part 2: Statistical analysis
+
+11. The first step to perform an analysis with generalized linear modeling is to define the design matrix. This is a matrix of 0s and 1s that encodes the study design and defines in which groups the samples belong. The design matrix is also used to correct for covariates such as sex and individual, and can be used to account for batch effects. Once requirement is that it needs to be of full rank, as mentioned in the lecture, otherwise it is impossible to calculate the model coefficients. If you try to run an analysis with a rank deficient matrix, you will get and error.
+
+```{r}
+#Step 1: Define design matrix
+designMatrix <-model.matrix(~0+storage +individual, data =sampleTable)
+designMatrix[1:5, 1:5]
+```
+
+12. The second step is to define the contrast matrix, which encodes the sample group comparisons of interest. Each comparison is a column in the contrast matrix and with only one column you get a pairwise comparison between two groups. You can also perform multi-group comparisons by including additional contrasts. The contrast matrix relies on the columns in the design matrix to define a contrast, so check the column names in the design matrix when performing this step.
+```{r}
+#Step 2: Define contrast matrix
+contrastMatrix <-makeContrasts(storageFFPE -storageFF,levels =designMatrix)
+head(contrastMatrix)
+```
+
+13. Once you have the design and contrast matrices, you can fit the generalized linear model to the count data. When performing this step with edgeR, you need to calculate normalization factors for library size and estimate dispersion parameters prior to actually fitting the model.
+
+```{r}
+#Step 3: Fit model
+dge <-DGEList(countTable)
+dge <-calcNormFactors(dge)
+dge <-estimateDisp(dge, designMatrix, robust =TRUE)
+fit <-glmQLFit(dge, designMatrix, robust =TRUE)
+```
+
+14. With the model fit you can perform hypothesis testing on the contrasts of interest by supplying the contrast matrix. The results can be filtered on FDR and log2 fold change to obtain a list of genes where the differential expression is statistically significant and large enough to be considered biologically meaningful. The thresholds to use here are also subjective, but commonly used values are 0.05 for FDR and 1 for log2 fold change. Depending on how large differences you expect, it may make sense to either increase or decrease the fold change threshold. You can include a table with the top 10 significant genes in the report.
+
+```{r}
+#Step 4: Perform hypothesis testing
+res <-glmQLFTest(fit, contrast =contrastMatrix)
+res <-topTags(res, n =nrow(countTable))
+sigRes <-subset(res$table, FDR <0.5&abs(logFC)> 0.1)
+knitr::kable(head(sigRes, 10))
+nrow(sigRes)
+```
+The top 10 dysregulated genes are TULP1, HSPB6, SYNPO, HBA2, LOC100996314, ZHX1, CDR1, CLIP3, VAMP2 and MYADM 
+
+15. You can visualize the results using a Volcano plot to get a nice visual on the number of up- and downregulated genes. You can also highlight the most significant ones as illustrated in the lecture. Note that you should not use the filtered results when preparing the Volcano plot, since it includes all genes regardless of p-value and fold change.
+```{r}
+#Visualize results
+volcanoPlot <-ggplot(res$table,
+                     aes(x =logFC,
+                         y =-log10(FDR),
+                         color =ifelse(FDR <0.05&abs(logFC) >1, "darkred", "grey"))) +
+  geom_point() +
+  xlab(expression("Fold Change, Log"[2]*"")) +
+  ylab(expression("Adjusted P value, Log"[10]*"")) +
+  geom_vline(xintercept =c(-1, 1), linetype ="dotted", size =1) +
+  geom_hline(yintercept =-log10(0.05), linetype ="dotted", size =1) +
+  theme_minimal() +theme(legend.position ="none") +
+  scale_colour_manual(values =c("darkred", "grey", "steelblue")) +
+  geom_text_repel(aes(x =logFC, y =-log10(FDR), 
+                      label = rownames(res$table)[1:10],
+                      size =2, 
+                      color ="steelblue"),
+                      data =res$table[1:10, ])
+print(volcanoPlot)
+```
+There are quite a lot of genes with a quite high fold changes in the FFPE and FF datasets as shown in the volcano plot.
+
+
+### Part 3: Enrichment analysis
+
+16. To make some biological sense of your results, one useful analysis is functional enrichment. This looks at statistical over-representation of terms among the genes that are found to be differentially expressed. The terms come from different annotation databases and represent different biological functions and signalling pathways etc. that the genes are involved in (based on literature or predictions). Perform enrichment analysis and look for significant terms in the GO biological processes and KEGG databases. 
+
+```{r}
+#Enrichment analysis
+head(listEnrichrDbs())
+enrichmentRes <-enrichr(
+  genes =rownames(sigRes),
+  databases =c("GO_Biological_Process_2018", "KEGG_2019_Human"))
+# check entries from the two databases 
+knitr::kable(enrichmentRes$GO_Biological_Process_2018[1:5, 1:4])
+knitr::kable(enrichmentRes$KEGG_2019_Human[1:5, 1:4])
+```
+
+17. You can visualize the enrichment of terms with bar plots as shown in the lecture. Here we use the -log10 of adjusted p-values, which means that the bar will be longer the lower the p-value is. Values to the right of the dashed line are significant at p < 0.05. Significant terms can give you many clues as to what major biological functions and pathways that are affected by the treatment studied. In case you are comparing controls to disease samples, the analysis will tell you what processes and pathways are perturbed in the disease.
+
+In this plot, we can see, which genes associated GO terms were the most commonly misrepresented between the FFPE and FF samples.
+
+```{r}
+#Visualize significant terms
+enrichPlots <-list()
+for(res in names(enrichmentRes)){
+  plotDF <-enrichmentRes[[res]][1:10, ]
+  plotDF$Term =str_trunc(plotDF$Term, 45)
+  plotDF$Term <-factor(plotDF$Term, levels =rev(plotDF$Term))
+  enrichPlot <-ggplot(plotDF, aes(x =Term, y =-log10(Adjusted.P.value))) +
+    geom_bar(stat ="identity", width =0.05) +geom_point(size =3) +
+    theme_minimal() +
+    theme(text =element_text(size =10),
+          plot.title =element_text(hjust =(10/nchar(res)) *2),
+          plot.margin =margin(t =5, r =50, b =5, unit ="pt"),
+          axis.text.y =element_text(size =8)) +
+    coord_flip() +geom_hline(yintercept =-log10(0.05), linetype ="dashed", color ="gray") +
+    labs(title =res, y =expression("Adjusted P value, Log"[10]*""))
+  enrichPlots[[res]] <-enrichPlot }
+plot(arrangeGrob(grobs =enrichPlots, layout_matrix =rbind(c(1, 2))))
+```
+
+### Part 4: Clustering and classification analysis
+
+18. Another way to look for patterns in data that does not rely on p-values is data mining approaches like clustering and classification analysis. Clustering analysis can be used to find groups of similar genes or samples, for example those having high correlation to each other. Classification analysis instead relies on groups or classes of samples and tries to build a model that can distinguish between different classes. Here you can use the examples shown on Day 3 of the course as a starting point for performing either clustering or classification analysis (or both) on your dataset. Present the results using suitable plots and tables, and discuss the implications of your findings.
+
+Finishing up
+
+19. Finally, knit you RMarkdown report into HTLM. This is very simple in RStudio, where you just click the Knit button at the top-left. You can configure the style of the HTML or export it in another format e.g. PDF. The strength of this approach is that analysis and report writing can be combined and that all results in the report are generated on the fly. If you change something, you only need to knit the report again and everything will update accordingly. Much more convenient and less error-prone than manually copying figures and tables into a report yourself. To complete your project, upload the HTLM report on the course website in Canvas.
+

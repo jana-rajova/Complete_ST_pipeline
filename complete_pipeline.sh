@@ -1,94 +1,97 @@
 #!/bin/bash
-ENSEMBL_TRANS='T'
-MATRIX_ANN='T'
-SCANORAMA='T'
-UMAP_ANN='T'
+ENSEMBL_TRANS=0
+MATRIX_ANN=0
+FILTER=0
+DIMRED=0
+CLUSTER_ANN=1
 
 echo 'Welcome to the Spatial Transcriptomics visualization pipeline!'
 
-#Argumentsfor"ensembltranslate"script
-#therearenosetArgumentssofar
+# Matrix annotation parameters
 
-matrix_annonation_exec=1
+MA_FILES="../data/ST_files/ST_files_striatum.txt" 
+#TIMESTAMP=$(date +"%Y-%m-%d-%H-%M-%S")
+TIMESTAMP="2020-11-20-16-30-27"
+MA_OUTPUT="../data/ST_files/ST_ann_CN56_reseq-test/"
+MA_INPUT_FOLDER="../data/ST_files/original_ST_all/"
 
-#Argumentsformatrixannnotation
-#MA_FILES automatically looks for the file in the data/ST_files folder
-# It is stupid, but it is too late now
-# Also, replace numpy with cupy in the matrix annotation if possible
-MA_FILES="ST_files_test.txt" # this file is the list of st original files to be processed
-TIMESTAMP=$(date +"%Y-%m-%d-%H-%M-%S")
-# TIMESTAMP="2020-08-09-18-41-34"
-echo $(date +"%Y-%m-%d-%H:%M:%S.")
-# echo $TIMESTAMP
+echo The timestamp is: $(date +"%Y-%m-%d-%H:%M:%S.")
 
-#Argumentsforgenefiltering
-FOLDER="../results/run_$TIMESTAMP"
-MUST_GENES="TH"
-OPTIONAL_GENES=" CCK MBP PENK PDYN SLC6R3"
+# Filtering on gene presence parameters
+
+MUST_GENES="TH PENK"
+OPTIONAL_GENES=" CCK MBP PDYN SLC6R3"
 STRICT_SELECTION=0
-
-GF_FILES="../data/ST_files/ST_files_test.txt" #these are the files to process from this step on
+FILT_INPUT_FOLDER=$MA_OUTPUT
 GRAPH="True"
+OUTPUT="../results/"
 
-#Arguments for scanorama (runs from heavy panorama script)
-HVG=500
-SCAN_FILES="$FOLDER/ST_files_filter_passed$TIMESTAMP.txt"
-echo $SCAN_FILES
+# Scanorama parameters
 
-#ArgumentsforUMAP_plot
-TRESH_UNI=8
-TRESH_SEP=3
-#DIM=$HVG
+if [ $FILTER -eq 1 ]
+then
+	SCAN_FILES="../results/result_$TIMESTAMP/ST_files_filter_passed_$TIMESTAMP.txt "
+else
+	SCAN_FILES="../results/result_$TIMESTAMP/ST_files_filter_passed_$TIMESTAMP.txt "
+fi
+HVG=600
+
+#Scanorama UMAP clustering
+
+THRESH_UNI=18
+THRESH_SEP=5
 CLUST_DIM=30
 
-#Argumentsforclustergeneexpressionanalysis
-GENE_NUM=50
-EXP_TRESH=3
+# Cluster analysis parameters
 
-#if ["$ENSEMBL_TRANS"=="T"]; then
-#echo 'Creating chimeric species'
-#python bin/ensembl_translate.py
-#echo "Combined ENSEMBL to gene name file created"
-#fi
+WELL_FILE="../results/result_$TIMESTAMP/ST_wells_filter_passed_$TIMESTAMP.txt "
+DESC_H5AD="../results/result_$TIMESTAMP/DESC/anndata_DESC_clustered.h5ad"
+SCAN_H5AD="../results/result_$TIMESTAMP/scanorama_cluster_UMAP_output/anndata_scanorama_clustr_combined-threshold-$THRESH_UNI.h5ad"
+CLUST_GENE="TH"
+MATCH_SD=0
 
-echo 'Starting matrix annotation'
-if [ $matrix_annonation_exec -eq 1 ]
+
+# Pipeline execution
+
+
+if [ $ENSEMBL_TRANS -eq 1 ]
 then
-  echo Matrix annotation will be performed!
-  python matrix_annotation.py -f $MA_FILES -t $TIMESTAMP
-  echo "Matrix annotation finished"
+	echo 'Creating chimeric species'
+	python bin/ensembl_translate.py
+	echo "Combined ENSEMBL to gene name file created"
 fi
-if [ ! -d "../data/scanorama/input_st_files" ]
+
+if [ $MATRIX_ANN -eq 1 ]
 then
-  mkdir ../data/scanorama/input_st_files
+	echo Starting matrix annotation!
+	python matrix_annotation.py -f $MA_FILES -t $TIMESTAMP -o $MA_OUTPUT --original_matrix_folder $MA_INPUT_FOLDER
+	echo "Matrix annotation finished"
 fi
-cp ../data/ST_files/ST_matrix_processed/*stdata.csv ../data/scanorama/input_st_files/
-rename 's/csv/tsv/' ../data/scanorama/input_st_files/*csv
-cp ../data/ST_files/ST_matrix_processed/*stdata.csv ../data/scanorama/input_st_files/
-sed -i s'/,/\t/'g ../data/scanorama/input_st_files/*tsv
 
-echo "Filtering wells based on genes present"
-mkdir $FOLDER
-python scanorama/filter_on_gene_presence.py -t $TIMESTAMP -g $MUST_GENES -i $OPTIONAL_GENES --graph $GRAPH -f $GF_FILES -s $STRICT_SELECTION -o $FOLDER
+if [ $FILTER -eq 1 ]
+then
+	echo Filtering based on gene presence will be performed
+	python scanorama/filter_on_gene_presence.py -f $MA_FILES -t $TIMESTAMP -g $MUST_GENES -i $OPTIONAL_GENES --graph $GRAPH -s $STRICT_SELECTION --input_folder $FILT_INPUT_FOLDER -o $OUTPUT
+	echo Only samples with predefined genes present used!
+fi
 
-#read -r -p "Do you want to continue with these results?[y/N]" response
-#if [["$response"=~^([yY][eE][sS]|[yY])$]]
-#then
-# CONT=1
-#else
-#echo"Exitingscript" | exit1
-#fi
+if [ $DIMRED -eq 1 ]
+then
+	echo "Starting Scanorama script"
+	python scanorama/process.py $SCAN_FILES
+	python scanorama/heavy_panorama.py --hvg $HVG -f $SCAN_FILES -t $TIMESTAMP -o $OUTPUT
+	echo "Scanorama processing finished"
+	echo "Starting UMAP clustering"
+	python scanorama/scanorama_cluster_UMAP.py -u $THRESH_UNI -s $THRESH_SEP -t $TIMESTAMP -o $OUTPUT
+	echo "UMAP clustering finished"
+	echo Starting DESC
+	python DESC/DESC_run.py -l $WELL_FILE -i $MA_OUTPUT --top_genes $HVG -t $TIMESTAMP
+	echo DESC finished
+fi
 
-
-echo "Starting Scanorama script"
-python scanorama/process.py $SCAN_FILES
-python scanorama/heavy_panorama.py --hvg $HVG -f $SCAN_FILES -t $TIMESTAMP -o $FOLDER
-echo "Scanorama processing finished"
-
-echo "Starting UMAP clustering"
-python scanorama/UMAP_plot.py -u $TRESH_UNI -s $TRESH_SEP -c $CLUST_DIM -t $TIMESTAMP -o $FOLDER
-echo "UMAP clustering finished"
-
-# echo "Starting heatmap generation"
-# python bin/scanorama/cluster_gene_expression_analysis.py -d $HVG -g $GENE_NUM -t $EXP_TRESH --timestamp $TIMESTAMP -o $FOLDER
-# echo "PIPELINE FINISHED"
+if [ $CLUSTER_ANN -eq 1 ]
+then
+	echo Cluster anotation and differential gene expression analysis started
+	python Cluster_variable_genes.py -d $DESC_H5AD -s $SCAN_H5AD -t $TIMESTAMP -g $CLUST_GENE -m $MATCH_SD -o $OUTPUT
+	echo DGE performed!
+fi
