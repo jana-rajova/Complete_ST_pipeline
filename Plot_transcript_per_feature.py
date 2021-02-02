@@ -13,20 +13,21 @@ from scipy.interpolate import griddata
 import scanpy as sc
 import matplotlib.colors as colors
 from matplotlib.pyplot import figure
-figure(figsize=(5,5))
+figure(figsize=(6,5))
 
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--folder', type=str, help='choose folder with cluster files', default='/media/MNM-NetStorage/OrganizedSeqFiles/ST/Complete_ST_pipeline/data/ST_files/ST_matrix_processed/')
-    parser.add_argument('-f', '--file', type=str, default="CN56_lim.txt")
-    parser.add_argument('-o', '--output', type=str, default='CN56_lim/')
+    parser.add_argument('--folder', type=str, help='choose folder with ST files', default='/media/MNM-NetStorage/OrganizedSeqFiles/ST/ST_CleanDedup_rerun_V1.1.2/')
+    parser.add_argument('-f', '--file', type=str, default="SN_list.txt")
+    parser.add_argument('-o', '--output', type=str, default='SN/')
+    parser.add_argument('--orig', type=int, default=0)
     args = parser.parse_args()
 
     well_list = []
     os.chdir(args.folder)
     path_list = '/media/MNM-NetStorage/OrganizedSeqFiles/ST/Complete_ST_pipeline/data/ST_files/' + args.file
-    output_path = '/media/MNM-NetStorage/OrganizedSeqFiles/ST/Complete_ST_pipeline/data/transcript_feature_plots/' + args.output
+    output_path = '/media/MNM-NetStorage/OrganizedSeqFiles/ST/Complete_ST_pipeline/data/transcript_feature_plots_orig/' + args.output
     if not os.path.isdir(output_path):
         os.makedirs(output_path)
     with open(path_list, 'r') as well_file:
@@ -40,6 +41,9 @@ if __name__ == "__main__":
         df_sum = pd.DataFrame(columns=['sum', 'feature', 'well'])
         #print(well)
         df = pd.read_csv(args.folder + well + "_stdata.tsv", index_col=0, header=0, sep="\t")
+        if args.orig == True:
+            df = df.transpose()
+
         df_sum['sum'] = df.sum(axis=0)
         df_sum['feature'] = df.columns
         df_sum['well'] = well
@@ -47,9 +51,13 @@ if __name__ == "__main__":
         #print(df_sum.head())
         wells_df = wells_df.append(df_sum)
        
-    
-wells_df['X'] = wells_df['feature'].str.extract('^X([0-9.]+)_').astype('float32')
-wells_df['Y'] = wells_df['feature'].str.extract('_([0-9.]+)$').astype('float32')*(-1)
+if args.orig == True:
+    wells_df['X'] = wells_df['feature'].str.extract('^([0-9]+)x').astype('int32')
+    wells_df['Y'] = wells_df['feature'].str.extract('x([0-9]+)').astype('int32')*(-1)
+else:   
+    wells_df['X'] = wells_df['feature'].str.extract('^X([0-9.]+)_').astype('float32')
+    wells_df['Y'] = wells_df['feature'].str.extract('_([0-9.]+)$').astype('float32')*(-1)
+print('Dataframes loaded')
 wells_df['sum'] = wells_df['sum'].astype('int64')
 log = [str(well_list)]
 log.append("Minimum number of transcripts in all wells (normal/log):")
@@ -76,11 +84,24 @@ for well in wells_df['well'].unique():
     log_well = well + "\t" + str(min(wells_df[wells_df['well']==well]['sum'])) + '\t' +  str(max(wells_df[wells_df['well']==well]['sum'])) + "\t" + str(min(wells_df[wells_df['well']==well]['sum_log2'])) + '\t' +  str(max(wells_df[wells_df['well']==well]['sum_log2']))
     log.append(log_well)
 
+    if not os.path.isdir(output_path + "unadjusted/"):
+        os.makedirs(output_path + "unadjusted/")
+    cs = cmap(cols[wells_df[wells_df['well']==well]['sum']-min(wells_df['sum'])])
+    sc = ax.scatter(wells_df[wells_df['well']==well]["X"], wells_df[wells_df['well']==well]["Y"], c=wells_df[wells_df['well']==well]["sum"], cmap=cmap, s=30, edgecolor='None')
+    plt.axis('off')
+    plt.colorbar(sc, ax=ax)
+    plt.show
+    plt.savefig(output_path + "unadjusted/" + well + '_transcript_per_feature.png', bbox_inches='tight')
+    plt.clf()
+
+
     if not os.path.isdir(output_path + "normal/"):
         os.makedirs(output_path + "normal/")
     cs = cmap(cols[wells_df[wells_df['well']==well]['sum']-min(wells_df['sum'])])
-    sc = ax.scatter(wells_df[wells_df['well']==well]["X"], wells_df[wells_df['well']==well]["Y"], c=cs, s=80, edgecolor='None')
+    sc = ax.scatter(wells_df[wells_df['well']==well]["X"], wells_df[wells_df['well']==well]["Y"], c=cs, s=30, edgecolor='None')
     plt.axis('off')
+    plt.colorbar(sc, ax=ax)
+    plt.show
     plt.savefig(output_path + "normal/" + well + '_transcript_per_feature.png', bbox_inches='tight')
     plt.clf()
 
@@ -90,9 +111,11 @@ for well in wells_df['well'].unique():
     if not os.path.isdir(output_path + "log2/"):
         os.makedirs(output_path + "log2/")
     cs_log = cmap(cols_log[wells_df[wells_df['well']==well]['sum_log2']-min(wells_df['sum_log2'])])
-    sc_log = ax.scatter(wells_df[wells_df['well']==well]["X"], wells_df[wells_df['well']==well]["Y"], c=cs_log, s=80, edgecolor='None')
+    sc_log = ax.scatter(wells_df[wells_df['well']==well]["X"], wells_df[wells_df['well']==well]["Y"], c=cs_log, s=30, edgecolor='None')
     plt.axis('off')
+    plt.colorbar(sc_log, ax=ax)
     plt.savefig(output_path + "log2/" + well + '_transcript_per_feature_log.png', bbox_inches='tight')
+    
     plt.clf()
 
 print(wells_df.head())

@@ -10,7 +10,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('--st_folder', type=str, help='choose folder with ST files', default='/media/MNM-NetStorage/OrganizedSeqFiles/ST/Complete_ST_pipeline/data/ST_files/ST_matrix_processed/')
     parser.add_argument('-c', '--cluster_folder', type=str, default='/media/MNM-NetStorage/OrganizedSeqFiles/ST/Complete_ST_pipeline/data/Seurat_clustered_wells/')
-    parser.add_argument('-d', '--dataset', type=str, default="CN56")
+    parser.add_argument('-d', '--dataset', type=str, default="TX")
     #parser.add_argument('-f', '--file', type=str, default="CN56_lim.txt")
     parser.add_argument('-o', '--output', type=str, default='/media/MNM-NetStorage/OrganizedSeqFiles/ST/Complete_ST_pipeline/results/cluster_gene_expression/')
     args = parser.parse_args()
@@ -36,6 +36,7 @@ if __name__ == "__main__":
             well = re.search('^([A-Z0-9]+_[C-E][1-2])_', well_file).group(1)
             path_cluster_df = path_cluster + method + '_' + args.dataset + '/' + well_file
             df_cluster = pd.read_csv(path_cluster_df, header=0, index_col='feature', sep='\t')
+            
             df_cluster = df_cluster['cluster']
             df_cluster
             print(df_cluster.head())
@@ -45,9 +46,13 @@ if __name__ == "__main__":
             df = df.groupby(['cluster']).sum()
             print(df.shape, "groupby cluster")
             df['well'] = well
+            df_count = pd.DataFrame({'cluster': df_cluster.value_counts().index, 'feature_counts': df_cluster.value_counts()})
+            print(df_count)
+            df = df_count.merge(df, how='inner', on='cluster')
+            print(df.head(10))
             well_col = df.pop('well')
             df.insert(0, 'well', well_col)
-            print()
+            print(df.iloc[1:5, 1:5])
             # print(df.head())
             wells_df = wells_df.append(df)
             wells_df.fillna(0, inplace=True)

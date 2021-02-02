@@ -10,6 +10,7 @@ import seaborn as sns
 import argparse
 import ST_matrices_to_anndata as Utils
 import scanpy as sc
+sc.set_figure_params(scanpy=True, dpi=80, dpi_save=150, frameon=True, vector_friendly=True, fontsize=14, figsize=None, color_map=None, format='pdf', facecolor=None, transparent=True, ipython_format='png2x')
 
 
 # genes is again specific to origianl csv files, but maybe we can also do it for scanorama and have the dimensions there instead if I find a way to find out,which genes contributed to which columns??

@@ -112,8 +112,8 @@ if __name__ == '__main__':
     # parser.add_argument('-c', '--clustering_dimensions', type=int, help='in how many dimensions does the ahc algorithm cluster?')
     parser.add_argument('-t', '--timestamp', type=str, help='scanorama result file timestamp')
     parser.add_argument("-o", "--output", type=str, help="output folder", default="../results/")
-    parser.add_argument("-f", "--stfile", type=str, default="/media/MNM-NetStorage/OrganizedSeqFiles/ST/Complete_ST_pipeline/data/ST_files/SN-TX_all.txt")
-    parser.add_argument("--output_dataframe", type=str, default="SN-TX-c_uncorrected_df.tsv")
+    parser.add_argument("-f", "--stfile", type=str, default="/media/MNM-NetStorage/OrganizedSeqFiles/ST/Complete_ST_pipeline/data/ST_files/CN56.txt")
+    parser.add_argument("--output_dataframe", type=str, default="CN56_uncorrected_df.tsv")
     args = parser.parse_args()
     sc.set_figure_params(figsize=(5,5))
 
