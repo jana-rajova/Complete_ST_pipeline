@@ -1,0 +1,91 @@
+---
+title: "SingleR_analysis"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r load libraries}
+suppressMessages(library(SingleCellExperiment))
+suppressMessages(require(Seurat))
+suppressMessages(require(Matrix))
+suppressMessages(require(gridExtra))
+suppressMessages(require(ggplot2))
+suppressMessages(require(pheatmap))
+suppressMessages(library(dplyr))
+#BiocManager::install("scuttle")
+suppressMessages(library(SummarizedExperiment))
+suppressMessages(library(SingleR))
+suppressMessages(library(patchwork))
+suppressMessages(library(ggrepel))
+suppressMessages(library(scuttle))
+```
+
+```{r load Seurat object}
+
+load('../../data/hesc_tx/hESC_TX_seurat.Rdata')
+```
+
+```{r create single cell experiment}
+# name of the folder with the matrices themselves
+# add the path to single cell data 
+sc.ref.path <- "/media/Dropbox/MNM projects/Spatial transcriptomics project/Data analysis/Complete_ST_pipeline/data/stereoscope_reference/single_cell_data/L5_101022/"
+sc.ref.name <- "L5_CTX_M_STR_description_selection_2000_astmerged"
+sc.ref.folder <- paste0(sc.ref.path, sc.ref.name, '_decomposed_reference/')
+# find files in the folder
+mat.file.ref <- grep("cnt", list.files(sc.ref.folder), value=TRUE)
+cell.attr.file.ref <- grep("mta", list.files(sc.ref.folder), value=TRUE)
+
+# load count and attribute files
+cell.attr.ref <- read.delim(paste0(sc.ref.folder, cell.attr.file.ref), header=TRUE, row.names=1, check.names=FALSE, sep = ',')
+mat.ref <- read.delim(paste0(sc.ref.folder, mat.file.ref), header=TRUE, row.names=1, check.names=FALSE, sep = ',')
+
+sce.ref <- SingleCellExperiment(assays = list(counts = t(mat.ref)), colData=cell.attr.ref)
+sce.ref <- scuttle::logNormCounts(sce.ref)
+sce.ref
+save(sc.ref.path, file=paste0(sc.ref.path, sc.ref.name, '_SingleCellExperiment.R'))
+#mat.t <- t(mat.t)
+
+expr.TX <- new@assays$RNA@data
+sce.TX <- SingleCellExperiment(assays = list(counts = expr.TX))
+sce.TX <- scuttle::logNormCounts(sce.TX)
+sce.TX
+#save(sce.TX, file="SingleR_transplant_single_cell_experiment.R")
+```
+
+
+```{r SingleR}
+# remove dubious cell types from the dataset
+
+#sce.ref.red <- sce.ref[, ! sce.ref$Celltype_assigned %in% c("Ependymal cells, midbrain (decoy)", "Glutamanergic projection neurons of the raphe nucleus (decoy)")]
+table(sce.ref$Celltype_assigned)
+
+# run SingleR instance
+pred.wilcox.lin.2000.astmerged <- SingleR(test=sce.TX, ref=sce.ref, labels=sce.ref$Celltype_assigned, de.method="wilcox")
+
+# show the results
+sort(table(pred.wilcox.lin.2000.astmerged$labels))
+new@meta.data$SingleR <- pred.wilcox.lin.2000.astmerged$labels  
+
+# write out the resulting dataframe
+pred.file <- '/media/Dropbox/MNM projects/Spatial transcriptomics project/Data analysis/Complete_ST_pipeline/results/SingleR/pred.wilcox.lin.2000.astmerged.R'
+save(pred.wilcox.lin.2000.astmerged, file=pred.file)
+load(pred.file)
+
+UMAP_embedding <- as.data.frame(Embeddings(new@reductions$umap))
+hESC.TX.df <- data.frame("CellID" = new@assays$RNA@counts@Dimnames[2],
+                          "Celltype_SingleR"=new@meta.data$SingleR,
+                         'cluster'= new@meta.data$seurat_clusters,
+                         "umap1" = UMAP_embedding$UMAP_1,
+                         "umap2" = UMAP_embedding$UMAP_2)
+
+write.table(hESC.TX.df, file=paste0('../../results/SingleR/hESC_TX_sc_SingleR_analysis', sc.ref.name, '.tsv'), sep='\t', quote=FALSE)
+```

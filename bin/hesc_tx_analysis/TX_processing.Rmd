@@ -1,0 +1,700 @@
+---
+title: "Data_integration"
+output: 
+  md_document:
+    variant: markdown_github
+---
+
+Integration with the 3 rats using Seurat v3 data integration strategy. 
+
+Scaling based on nFeature (number of detected genes) and percent.mito first for each object, and no scaling in integration step.
+
+Also, change the resolution to get fewer clusters, so we do not have to merge clusters in the last step.
+
+```{r packages, warning=FALSE}
+suppressMessages(require(Seurat))
+suppressMessages(require(Matrix))
+suppressMessages(require(gridExtra))
+suppressMessages(require(ggplot2))
+suppressMessages(require(pheatmap))
+suppressMessages(library(dplyr))
+```
+
+
+### Load data
+
+Load all the seurat objects per sample.
+
+```{r load}
+indir <- "../data/"
+rats <- c("rat11","rat39","rat45")
+# load data
+alldata <- list()
+for (rat in rats){
+  file.name <- paste(indir,"seurat_object_",rat,".Rdata", sep='')
+  load(file.name)
+  alldata[[rat]] <- ss
+}
+```  
+
+
+## Do integration
+
+Run for now with default settings. 
+
+
+```{r integrate}
+sel.pc <- 1:30
+npcs <- 30
+savefile <- "integrated.Rdata"
+if (!file.exists(savefile)){
+  data.anchors <- FindIntegrationAnchors(object.list = alldata, dims = sel.pc, scale=F)
+  #rm(alldata)
+  data.integrated <- IntegrateData(anchorset = data.anchors, dims = sel.pc)
+  rm(data.anchors)
+  DefaultAssay(object = data.integrated) <- "integrated"
+  #Dimensionality reductions
+  data.integrated <- ScaleData(object = data.integrated, verbose = FALSE)
+  data.integrated <- RunPCA(object = data.integrated, npcs = npcs, verbose = FALSE)
+  set.seed(1)
+  data.integrated <- RunUMAP(object = data.integrated, reduction = "pca", dims = sel.pc)
+  set.seed(1)
+  data.integrated <- RunTSNE(object = data.integrated, reduction = "pca", dims = sel.pc)
+  save(data.integrated, file=savefile)
+}else{
+  load(savefile)
+  rm(alldata)
+}
+```
+
+### Plot data
+
+Plot as UMAP and tSNE embedding. 
+
+Color by sample, or by celltype prediction from the individual clustering without integration.
+
+```{r}
+small.leg <- theme(legend.text = element_text(size=4), legend.key.size = unit(1,"point"))
+DimPlot(object = data.integrated, reduction = "umap", group.by = "orig.ident") + NoAxes() + small.leg + ggtitle("UMAP")
+DimPlot(object = data.integrated, reduction = "tsne", group.by = "orig.ident") + NoAxes() + small.leg + ggtitle("tSNE")
+```
+
+Some of the cells that were in the neuronal cluster in the 10X integration are now at one tip of the astro cluster with tSNE and an outlier group in UMAP.
+
+
+### Plot marker genes
+
+OBS! Before was in integrated space, now plot as RNA expression.
+
+```{r}
+data.rna <- data.integrated
+data.rna@active.assay <- "RNA"
+# plot some marker genes.
+plot.genes <- c("TH","SLC6A3","SNAP25","GAP43", "NEFL","DLK1","OLIG1","GFAP","AQP4","COL1A1","DCN","FBLN1", "SLC18A3", "RET", "ENG1")
+p1 <- FeaturePlot(data.rna, features = plot.genes, reduction = "tsne", pt.size = 0.2, combine = F, cols = c("yellow","red","black"))
+p1 <- lapply(p1, function(x) x + NoAxes() + NoLegend())
+grid.arrange(grobs=p1, ncol=4)
+```
+  
+  
+### Run clustering
+
+
+```{r cluster}
+# cluster
+set.seed(1)
+data.integrated <- FindNeighbors(object = data.integrated, dims = sel.pc, verbose = F, k.param = 15, force.recalc = T)
+data.integrated <- FindClusters(object = data.integrated, resolution = 0.05, verbose = F)
+# plot clustering
+DimPlot(data.integrated, reduction = "umap", label = T) + NoAxes()
+DimPlot(data.integrated, reduction = "tsne", label = T) + NoAxes()
+# split by sample
+DimPlot(object = data.integrated, reduction = "umap", split.by = "Sample")
+```
+
+
+
+
+Number of cells from each sample to each cluster:
+
+```{r}
+s <- split(data.integrated@active.ident,data.integrated@meta.data$orig.ident)
+s <- lapply(s,table)
+overlap <- Reduce(rbind,s)
+rownames(overlap) <- names(s)
+pheatmap(overlap, cluster_cols = F, cluster_rows = F, scale = "row", display_numbers = overlap, legend = F)
+```
+
+
+Number of cells per cluster
+
+```{r}
+table(data.integrated@active.ident)
+```
+
+
+### Run DE detection
+
+Run all tests with the normalized RNA data and plot as such.
+
+```{r DE}
+data.rna <- data.integrated
+data.rna@active.assay <- "RNA"
+printfile <- "integrate_rat_marker_genes_scale_res0.1.txt"
+force <- FALSE
+  if (force | !file.exists(printfile)){
+    print("running FindMarkers")
+    markers <- FindAllMarkers(data.integrated, verbose = T, assay = "RNA")
+    write.table(markers, file=printfile)
+  }else {
+    print(sprintf("reading file %s",printfile))
+    markers <- read.table(printfile)
+  }
+```
+
+Plot heatmap with top DE genes
+
+```{r}
+# Plot heatmap with top DE genes
+  per.cluster <- split(markers, markers$cluster)
+  top10 <- lapply(per.cluster, function(x) x$gene[x$avg_log2FC>0][1:10])
+  top10 <- unique(na.omit(unlist(top10)))
+  plotgenes <- list()
+  plotgenes[[1]]<-top10
+  nPlot <- 50
+  if (length(top10) > nPlot){
+    # plot 60 per page
+    splitN <- ceiling(length(top10)/nPlot)
+    plotgenes <- split(top10, cut_number(1:length(top10), splitN))
+  }
+  for (i in 1:length(plotgenes)){
+    print(DoHeatmap(data.rna, features = plotgenes[[i]], slot="data"))
+  }
+```
+
+
+Plot top DE genes onto UMAP.
+
+```{r plot.de}
+top8 <- lapply(per.cluster, function(x) as.character(x$gene[x$avg_log2FC>0][1:8]))
+plots <- list()
+for (cl in names(top8)){
+    cc <- colnames(data.integrated)[data.integrated@active.ident == cl]
+    p0 <- DimPlot(data.rna, reduction = "umap", pt.size = 0.1, cells.highlight = cc)  + NoAxes() + NoLegend() + ggtitle(sprintf("cluster %s",cl)) + theme(plot.title = element_text(size=6),  plot.margin = rep(unit(0,"null"),4) , panel.spacing = unit(0,"null"))
+    p1 <- FeaturePlot(data.rna, features = top8[[cl]], pt.size = 0.1, reduction = "umap", combine = F, cols = c("yellow","red","black"))
+    p1 <- lapply(p1, function(x) x + NoAxes() + NoLegend() + theme(plot.title = element_text(size=6),plot.margin = rep(unit(0,"null"),4) , panel.spacing = unit(0,"null")))
+    p1$cl <- p0
+    p1 <- p1[c(9,1:8)]
+    plots <- append(plots,p1)
+}
+nPage <- ceiling(length(top8)/6)
+
+for (p in 1:nPage){
+    idx <- (p*54-53):min(p*54,length(top8)*9)
+    grid.arrange(grobs = plots[idx], ncol=9, nrow=6)
+}
+
+  out.folder <- '../res/gene_expression/'
+  dir.create(out.folder, recursive = TRUE)
+for (gene in c('TH', 'ALDH1A1', 'AQP4', 'SLC6A3', 'GFAP', 'COL1A1', 'COL1A2', 'RET', 'PBX1', 'SOX9')){
+  out.file <- paste0('../res/gene_expression/', gene, '_UMAP_visualization.pdf')
+  pdf(filename = out.file)
+  FeaturePlot(data.rna, features = c('TH', 'ALDH1A1', 'AQP4', 'SLC6A3', 'GFAP', 'COL1A1', 'COL1A2', 'RET', 'PBX1'), pt.size = 0.5, reduction = "umap", cols = c("blue","yellow","red"))
+  dev.off()
+
+}
+  pdf(file = out.file)
+  FeaturePlot(data.rna, features = 'SOX9', pt.size = 0.5, reduction = "umap", cols = c("blue","yellow","red"))
+  dev.off()
+```
+
+  
+The 2 clear neuronal clusters (cluster9 & cluster10), have 174 and 57 cells, of which 35 are SS2 (all in cluster 9).
+
+Before (without SS2 data) it was 139 + 58 cells in the two neuron clusters (8 & 10), so 1 cell have moved from neuronal cluster to another cluster.
+  
+
+
+# Compare to mouse brain atlas
+
+Read in the mouse brain atlas data and get a list of marker genes to calculate correlations on.
+
+```{r atlas_data, warning=FALSE}
+suppressMessages(library(loomR))
+# to load loomR - need to first unload ‘dplyr’, ‘httr’?
+lfile <- connect(filename = "../data/l5_all.agg.loom", mode = "r", skip.validate = T)
+exprs <- lfile[["matrix"]][,]
+exprs <- t(exprs)
+names <- lfile[["col_attrs"]]$names
+clust <- lfile[["col_attrs/ClusterName"]][]
+colnames(exprs) <- clust
+gene.names <- lfile[["row_attrs/Gene"]][]
+rownames(exprs) <- gene.names
+# attr.df <- lfile$get.attribute.df(MARGIN = 2, attribute.names = names)
+# does not work to run get.attribute, 
+#  An object with name col_attrs/cell_names does not exist in this group
+M <- list()
+for (n in names){
+  M[[n]] <- lfile[["col_attrs"]][[n]][]
+}
+M <- Reduce(cbind,M)
+rownames(M) <- clust
+colnames(M) <- names
+M <- data.frame(M)
+# extract all their marker genes
+markersA <- unique(unlist(sapply(as.vector(M$MarkerGenes), strsplit, " ")))
+#length(markersA)
+# and our marker genes
+markers2 <- unique(markers[markers$p_val_adj<0.001,"gene"])
+#length(markers2)
+```
+
+Translate human to mouse genes.
+
+```{r, orthologs}
+transfile <- "../data/human_gene_translations.txt"
+# get ensembl ids for the human genes
+gene.info <- read.table("../data/gene_annotation.tsv", sep="\t", quote='', header=T)
+human.ensembl <- gene.info$ensembl_gene_id
+if (file.exists(transfile)){
+  gene.translation <- read.table(transfile)
+}else{
+  library(biomaRt)
+  # Load human ensembl attributes
+  #human = biomaRt::useMart("ensembl", dataset = "hsapiens_gene_ensembl")
+  human <- useMart(host="uswest.ensembl.org", "ENSEMBL_MART_ENSEMBL", dataset="hsapiens_gene_ensembl")
+  # Load mouse ensembl attributes
+  #mouse = biomaRt::useMart("ensembl", dataset = "mmusculus_gene_ensembl")
+  mouse <- useMart(host="uswest.ensembl.org", "ENSEMBL_MART_ENSEMBL", dataset="mmusculus_gene_ensembl")
+  
+  # Link both datasets and retrieve human gene id + name
+  gene.translation = biomaRt::getLDS(attributes = c("external_gene_name","ensembl_gene_id"), filters = "ensembl_gene_id", values = human.ensembl , mart = human, attributesL = c("ensembl_gene_id","external_gene_name"), martL = mouse, uniqueRows = T)
+  #head(gene.translation)
+  
+  # only keep genes that also exists in the expression data
+  matches1 <- sapply(gene.translation$Gene.name, match, rownames(data.integrated@assays$RNA@counts))
+  matches2 <- sapply(gene.translation$Gene.name.1, match, rownames(exprs))
+  keep <- (is.na(matches1) + is.na(matches2) )==0
+  gene.translation <- gene.translation[keep,]
+    
+  write.table(gene.translation, file=transfile)
+}
+# select only genes that are expressed in 10 cells our data
+nE <- rowSums(data.integrated@assays$RNA@counts > 0)
+expressed.genes <- rownames(data.integrated@assays$RNA@counts)[nE>10]
+gene.translation <- gene.translation[gene.translation$Gene.name %in% expressed.genes,]
+# select only genes that are among the marker genes
+keep.markersA <- which(gene.translation$Gene.name.1 %in% markersA)
+keep.markers2 <- which(gene.translation$Gene.name %in% markers2)
+print("our markers:")
+length(keep.markers2)
+print("atlas markers:")
+length(keep.markersA)
+print("in both:")
+length(intersect(keep.markers2,keep.markersA))
+keep.markers <- union(keep.markersA,keep.markers2)
+print("total markers:")
+length(keep.markers)
+# only 201 genes as markers in both datasets.
+gene.translation <- gene.translation[keep.markers,]
+```
+
+Calculate mean expression across the markers for our data. And fetch mean expression for the same markers in the atlas data.
+
+```{r}
+# use the norm.data slot.
+exprR <- data.integrated@assays$RNA@data
+exprR <- exprR[gene.translation$Gene.name,]
+clust2cell <- split(1:ncol(data.integrated), data.integrated@active.ident)
+exprsC <- Reduce(cbind,lapply(clust2cell, function(x) rowMeans(exprR[,x])))
+colnames(exprsC) <- names(clust2cell)
+exprsA <- log2(exprs[match(gene.translation$Gene.name.1, rownames(exprs)),]+1)
+```
+
+Calculate correlations
+
+```{r, fig.width=10, fig.height=6}
+cC <- cor(exprsC,exprsA, method = "spearman")
+include.annot <- c("TaxonomyRank1","TaxonomyRank2","TaxonomyRank3","TaxonomyRank4", "ClusterName")
+colorsC <- M[,include.annot]
+  
+# keep order for atlas cells by their Taxonomy ranks
+o <- order(M$TaxonomyRank1, M$TaxonomyRank2, M$TaxonomyRank3, M$ClusterName)
+pheatmap(cC[,o], annotation_col = colorsC[,1:4], cluster_cols = F, show_colnames = F, fontsize = 6) 
+```
+```{r, fig.width=10, fig.height=6}
+cC <- cor(exprsC,exprsA, method = "spearman")
+include.annot <- c("TaxonomyRank2", "Description")
+colorsC <- M[,include.annot]
+colorsCc <- colorsC
+  
+# keep order for atlas cells by their Taxonomy ranks
+o <- order(M$TaxonomyRank1, M$TaxonomyRank2, M$TaxonomyRank3, M$Description)
+pheatmap(cC[,o], annotation_col = colorsC[,1:2], cluster_cols = F, show_colnames = F, fontsize = 6) 
+```
+
+Top correlation per cluster, print top 6 correlating atlas clusters.
+
+```{r}
+# top correlation per group are clusters:
+for(c in rownames(cC)){
+  print(c)
+  print(head(sort(cC[c,],decreasing = T), n = 10))
+}
+```
+
+
+### Linnarsson data at tax level 4
+Calculate mean expression at level 4 and compare to our clusters.
+
+```{r, fig.width=10, fig.height=6}
+level4 <- split(1:ncol(exprsA), M$TaxonomyRank4)
+get.mean <- function(x){
+  if (length(x) == 1) { return(exprsA[,x])}
+  else { return(rowMeans(exprsA[,x]))}
+}
+mean.level4 <- lapply(level4, get.mean)
+exprs4 <- Reduce(cbind, mean.level4)
+colnames(exprs4) <- names(level4)
+c4S <- cor(exprsC,exprs4, method = "spearman")
+
+#make color def for Tax rank4
+tax2 <- as.character(M[match(names(level4), M$TaxonomyRank4),]$TaxonomyRank2)
+colorsC <- data.frame(TaxonomyRank2 =  tax2)
+rownames(colorsC) <- names(level4)
+
+pheatmap(c4S, fotsize_col = 8, annotation_col = colorsC)
+
+```
+
+
+```{r, fig.width=10, fig.height=6}
+leveld <- split(1:ncol(exprsA), M$Description)
+get.mean <- function(x){
+  if (length(x) == 1) { return(exprsA[,x])}
+  else { return(rowMeans(exprsA[,x]))}
+}
+mean.leveld <- lapply(leveld, get.mean)
+exprsd <- Reduce(cbind, mean.leveld)
+colnames(exprsd) <- names(leveld)
+#make color def for Tax rank2 
+#level_desc <- split(1:ncol(exprsA), M$Description)
+taxd <- as.character(M[match(names(leveld), M$Description),]$TaxonomyRank2)
+colorsCc <- data.frame(TaxonomyRank2 =  taxd)
+rownames(colorsCc) <- names(leveld)
+c4d <- cor(exprsC,exprsd, method = "spearman")
+c4dt <- as.data.frame(t(c4d))
+
+#0
+c4dt <- c4dt[order(c4dt$`0`), ]
+pdf(file=paste0('../res/pheatmap_description_TX_sorted-by-0.pdf'), width = 32, height = 50 ,onefile = T)
+pheatmap(c4dt, fotsize_col = 8, cellheight=15, cluster_rows = FALSE)
+dev.off()
+
+#1
+c4dt <- c4dt[order(c4dt$`1`), ]
+pdf(file=paste0('../res/pheatmap_description_TX_sorted-by-1.pdf'), width = 32, height = 50 ,onefile = T)
+pheatmap(c4dt, fotsize_col = 8, cellheight=15, cluster_rows = FALSE)
+dev.off()
+
+#2
+c4dt <- c4dt[order(c4dt$`2`), ]
+pdf(file=paste0('../res/pheatmap_description_TX_sorted-by-2.pdf'), width = 32, height = 50 ,onefile = T)
+pheatmap(c4dt, fotsize_col = 8, cellheight=15, cluster_rows = FALSE)
+dev.off()
+```
+
+```{r}
+# top correlation per group are clusters:
+for(c in rownames(c4d)){
+  print(c)
+  print(head(sort(c4d[c,],decreasing = T), n = 30))
+}
+```
+```{r}
+# top correlation per group are clusters:
+for(c in rownames(c4S)){
+  print(c)
+  print(head(sort(c4S[c,],decreasing = T), n = 15))
+}
+```
+
+Take top correlating brain atlas cluster and predict celltype for our clusters.
+
+```{r}
+#for(c in rownames(c4S)){
+#  print(c)
+#  print(head(sort(c4S[c,],decreasing = T),3))
+#}
+new <- data.integrated
+new.annot <- colnames(c4d)[apply(c4d, 1,which.max)]
+names(new.annot) <- rownames(c4d)
+new@meta.data$CelltypeMBA <- new.annot[new@active.ident]
+print(new.annot)
+DimPlot(new, group.by = "CelltypeMBA", label = T) + NoAxes() + NoLegend()
+```
+
+### Make a plot with only the Enteric glia subclusters
+
+```{r, fig.width=10, fig.height=6}
+enteric <- grep("Enteric glia", M$TaxonomyRank4)
+cE <- cor(exprsC,exprsA[,enteric], method = "spearman")
+pheatmap(cE)
+```
+
+# Proportion cells from different sortings
+
+Visualize per cluster:
+
+* Number of cells from each rat
+* Number of cells from different sortings
+
+And opposite, for each rat - visualize how the cells are distributed to different clusters.
+
+
+```{r}
+meta <- new@meta.data
+ggplot(meta, aes(x=integrated_snn_res.0.05,fill=Rat)) + geom_bar()
+ggplot(meta, aes(x=integrated_snn_res.0.05,fill=Rat)) + geom_bar(position = "fill") 
+ggplot(meta, aes(x=integrated_snn_res.0.05,fill=Type)) + geom_bar(position = "fill") 
+# per rat instaed.
+ggplot(meta, aes(x=Rat, fill=integrated_snn_res.0.05)) + geom_bar()
+ggplot(meta, aes(x=Rat, fill=integrated_snn_res.0.05)) + geom_bar(position = "fill") 
+```
+```{r atlas_data_filtered to CSN only, warning=FALSE}
+suppressMessages(library(loomR))
+# to load loomR - need to first unload ‘dplyr’, ‘httr’?
+lfile <- connect(filename = "../data/l5_all.agg.loom", mode = "r", skip.validate = T)
+exprs <- lfile[["matrix"]][,]
+exprs <- t(exprs)
+names <- lfile[["col_attrs"]]$names
+clust <- lfile[["col_attrs/ClusterName"]][]
+colnames(exprs) <- clust
+gene.names <- lfile[["row_attrs/Gene"]][]
+rownames(exprs) <- gene.names
+# attr.df <- lfile$get.attribute.df(MARGIN = 2, attribute.names = names)
+# does not work to run get.attribute, 
+#  An object with name col_attrs/cell_names does not exist in this group
+M <- list()
+for (n in names){
+  M[[n]] <- lfile[["col_attrs"]][[n]][]
+}
+M <- Reduce(cbind,M)
+rownames(M) <- clust
+colnames(M) <- names
+M <- data.frame(M)
+M.filtered <- filter(M, Region == "CNS"
+       | Region == "Cortex" 
+       | Region == "Hippocampus,Cortex"
+       | Region == "Midbrain ventral"
+       | Region == "Striatum dorsal"
+       | Region == "Striatum ventral"
+       | Region == "Striatum dorsal,Striatum ventral"
+       | Region == "Striatum dorsal, Striatum ventral, Dentate gyrus"
+       | Region == "Striatum dorsal, Striatum ventral,Amygdala"
+       | Region == "Striatum dorsal, Striatum ventral"
+       | Region == "Midbrain dorsal,Midbrain ventral"
+       | Region == "Telencephalon"
+       | Region == "Hypothalamus,Thalamus,Midbrain dorsal,Midbrain ventral,Pons,Medulla,Spinal cord"
+       )
+exprs.filtered <- exprs[, M.filtered$ClusterName]
+
+# extract all their marker genes
+markersA <- unique(unlist(sapply(as.vector(M.filtered$MarkerGenes), strsplit, " ")))
+#length(markersA)
+# and our marker genes
+markers2 <- unique(markers[markers$p_val_adj<0.001,"gene"])
+#length(markers2)
+```
+
+
+```{r, orthologs}
+transfile <- "../data/human_gene_translations.txt"
+# get ensembl ids for the human genes
+gene.info <- read.table("../data/gene_annotation.tsv", sep="\t", quote='', header=T)
+human.ensembl <- gene.info$ensembl_gene_id
+if (file.exists(transfile)){
+  gene.translation <- read.table(transfile)
+}else{
+  library(biomaRt)
+  # Load human ensembl attributes
+  #human = biomaRt::useMart("ensembl", dataset = "hsapiens_gene_ensembl")
+  human <- useMart(host="uswest.ensembl.org", "ENSEMBL_MART_ENSEMBL", dataset="hsapiens_gene_ensembl")
+  # Load mouse ensembl attributes
+  #mouse = biomaRt::useMart("ensembl", dataset = "mmusculus_gene_ensembl")
+  mouse <- useMart(host="uswest.ensembl.org", "ENSEMBL_MART_ENSEMBL", dataset="mmusculus_gene_ensembl")
+  
+  # Link both datasets and retrieve human gene id + name
+  gene.translation = biomaRt::getLDS(attributes = c("external_gene_name","ensembl_gene_id"), filters = "ensembl_gene_id", values = human.ensembl , mart = human, attributesL = c("ensembl_gene_id","external_gene_name"), martL = mouse, uniqueRows = T)
+  #head(gene.translation)
+  
+  # only keep genes that also exists in the expression data
+  matches1 <- sapply(gene.translation$Gene.name, match, rownames(data.integrated@assays$RNA@counts))
+  matches2 <- sapply(gene.translation$Gene.name.1, match, rownames(exprs.filtered))
+  keep <- (is.na(matches1) + is.na(matches2) )==0
+  gene.translation <- gene.translation[keep,]
+    
+  write.table(gene.translation, file=transfile)
+}
+# select only genes that are expressed in 10 cells our data
+nE <- rowSums(data.integrated@assays$RNA@counts > 0)
+expressed.genes <- rownames(data.integrated@assays$RNA@counts)[nE>10]
+gene.translation <- gene.translation[gene.translation$Gene.name %in% expressed.genes,]
+# select only genes that are among the marker genes
+keep.markersA <- which(gene.translation$Gene.name.1 %in% markersA)
+keep.markers2 <- which(gene.translation$Gene.name %in% markers2)
+print("our markers:")
+length(keep.markers2)
+print("atlas markers:")
+length(keep.markersA)
+print("in both:")
+length(intersect(keep.markers2,keep.markersA))
+keep.markers <- union(keep.markersA,keep.markers2)
+print("total markers:")
+length(keep.markers)
+# only 201 genes as markers in both datasets.
+gene.translation <- gene.translation[keep.markers,]
+```
+
+Calculate mean expression across the markers for our data. And fetch mean expression for the same markers in the atlas data.
+
+```{r}
+# use the norm.data slot.
+exprR <- data.integrated@assays$RNA@data
+exprR <- exprR[gene.translation$Gene.name,]
+clust2cell <- split(1:ncol(data.integrated), data.integrated@active.ident)
+exprsC <- Reduce(cbind,lapply(clust2cell, function(x) rowMeans(exprR[,x])))
+colnames(exprsC) <- names(clust2cell)
+exprsA <- log2(exprs.filtered[match(gene.translation$Gene.name.1, rownames(exprs.filtered)),]+1)
+```
+
+Calculate correlations
+
+```{r, fig.width=10, fig.height=6}
+cC <- cor(exprsC,exprsA, method = "spearman")
+include.annot <- c("TaxonomyRank1","TaxonomyRank2","TaxonomyRank3","TaxonomyRank4", "ClusterName")
+colorsC <- M.filtered[,include.annot]
+  
+# keep order for atlas cells by their Taxonomy ranks
+o <- order(M.filtered$TaxonomyRank1, M.filtered$TaxonomyRank2, M.filtered$TaxonomyRank3, M.filtered$ClusterName)
+pheatmap(cC[,o], annotation_col = colorsC[,1:4], cluster_cols = F, show_colnames = F, fontsize = 6) 
+```
+```{r, fig.width=10, fig.height=6}
+cC <- cor(exprsC,exprsA, method = "spearman")
+include.annot <- c("TaxonomyRank2", "Description")
+colorsC <- M.filtered[,include.annot]
+colorsCc <- colorsC
+  
+# keep order for atlas cells by their Taxonomy ranks
+o <- order(M.filtered$TaxonomyRank1, M.filtered$TaxonomyRank2, M.filtered$TaxonomyRank3, M.filtered$Description)
+pheatmap(cC[,o], annotation_col = colorsC[,1:2], cluster_cols = F, show_colnames = F, fontsize = 6) 
+```
+
+Top correlation per cluster, print top 6 correlating atlas clusters.
+
+```{r}
+# top correlation per group are clusters:
+for(c in rownames(cC)){
+  print(c)
+  print(head(sort(cC[c,],decreasing = T), n = 10))
+}
+```
+
+
+### Linnarsson data at tax level 4
+Calculate mean expression at level 4 and compare to our clusters.
+
+```{r, fig.width=10, fig.height=6}
+level4 <- split(1:ncol(exprsA), M.filtered$TaxonomyRank4)
+get.mean <- function(x){
+  if (length(x) == 1) { return(exprsA[,x])}
+  else { return(rowMeans(exprsA[,x]))}
+}
+mean.level4 <- lapply(level4, get.mean)
+exprs4 <- Reduce(cbind, mean.level4)
+colnames(exprs4) <- names(level4)
+c4S <- cor(exprsC,exprs4, method = "spearman")
+
+#make color def for Tax rank4
+tax2 <- as.character(M.filtered[match(names(level4), M.filtered$TaxonomyRank4),]$TaxonomyRank2)
+colorsC <- data.frame(TaxonomyRank2 =  tax2)
+rownames(colorsC) <- names(level4)
+
+pheatmap(c4S, fotsize_col = 8, annotation_col = colorsC)
+
+```
+
+
+```{r, fig.width=10, fig.height=6}
+leveld <- split(1:ncol(exprsA), M.filtered$Description)
+get.mean <- function(x){
+  if (length(x) == 1) { return(exprsA[,x])}
+  else { return(rowMeans(exprsA[,x]))}
+}
+mean.leveld <- lapply(leveld, get.mean)
+exprsd <- Reduce(cbind, mean.leveld)
+colnames(exprsd) <- names(leveld)
+#make color def for Tax rank2 
+#level_desc <- split(1:ncol(exprsA), M$Description)
+taxd <- as.character(M.filtered[match(names(leveld), M.filtered$Description),]$TaxonomyRank2)
+colorsCc <- data.frame(TaxonomyRank2 =  taxd)
+rownames(colorsCc) <- names(leveld)
+c4d <- cor(exprsC,exprsd, method = "spearman")
+c4dt <- as.data.frame(t(c4d))
+
+#0
+c4dt <- c4dt[order(c4dt$`0`), ]
+pdf(file=paste0('../res/pheatmap_description_TX_CNS_sorted-by-0.pdf'), width = 32, height = 50 ,onefile = T)
+pheatmap(c4dt, fotsize_col = 8, cellheight=15, cluster_rows = FALSE)
+dev.off()
+
+#1
+c4dt <- c4dt[order(c4dt$`1`), ]
+pdf(file=paste0('../res/pheatmap_description_TX_CNS_sorted-by-1.pdf'), width = 32, height = 50 ,onefile = T)
+pheatmap(c4dt, fotsize_col = 8, cellheight=15, cluster_rows = FALSE)
+dev.off()
+
+#2
+c4dt <- c4dt[order(c4dt$`2`), ]
+pdf(file=paste0('../res/pheatmap_description_TX_CNS_sorted-by-2.pdf'), width = 32, height = 50 ,onefile = T)
+pheatmap(c4dt, fotsize_col = 8, cellheight=15, cluster_rows = FALSE)
+dev.off()
+```
+
+```{r}
+# top correlation per group are clusters:
+for(c in rownames(c4d)){
+  print(c)
+  print(head(sort(c4d[c,],decreasing = T), n = 30))
+}
+```
+
+Take top correlating brain atlas cluster and predict celltype for our clusters.
+
+```{r}
+#for(c in rownames(c4S)){
+#  print(c)
+#  print(head(sort(c4S[c,],decreasing = T),3))
+#}
+new <- data.integrated
+new.annot <- colnames(c4d)[apply(c4d, 1,which.max)]
+names(new.annot) <- rownames(c4d)
+new@meta.data$CelltypeMBA <- new.annot[new@active.ident]
+print(new.annot)
+DimPlot(new, group.by = "CelltypeMBA", label = T) + NoAxes() + NoLegend()
+save(new, file='../data/hESC_TX_seurat.Rdata')
+```
+
+```{r}
+sessionInfo()
+```
+```{r}
+sessionInfo()
+```
+```{r}
+sessionInfo()
+```
+
+```{r}
+sessionInfo()
+```

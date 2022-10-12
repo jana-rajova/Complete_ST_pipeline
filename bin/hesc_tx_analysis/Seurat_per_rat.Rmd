@@ -1,0 +1,135 @@
+---
+title: "Seurat_per_rat"
+output: 
+md_document:
+variant: markdown_github
+---
+  
+For each rat, run all of seurat pipeline for 
+
+* dimensionality reduction, 
+* clustering, 
+
+
+```{r load, warning=FALSE}
+suppressMessages(require(Seurat))
+suppressMessages(require(Matrix))
+suppressMessages(require(gridExtra))
+suppressMessages(require(ggplot2))
+suppressMessages(require(pheatmap))
+```
+
+
+Function to run all Seurat steps.
+
+```{r}
+sel.pc <- 1:30
+npcs <- 30
+run_seurat <- function(sample, dataA){
+  # create seurat object for that sample
+  data <- subset(x = dataA, cells = colnames(dataA)[dataA@meta.data$Rat == sample])
+  data <- NormalizeData(object = data, verbose = F)
+  # find variable genes, default is top 2K variable genes.
+  data <- FindVariableFeatures(object = data, verbose = F)
+  data <- ScaleData(object = data, vars.to.regress = c("nGene","percent.mito"), verbose = F)
+  data <- RunPCA(object = data, features = VariableFeatures(object = data), verbose=F)
+  data <- JackStraw(data, verbose=F)
+  data <- ScoreJackStraw(data, dims = 1:20)
+  sel.pc <- which(JS(object = data[['pca']], slot = 'overall')[,2] < 1e-3)
+  
+  # cluster
+  set.seed(1)
+  data <- FindNeighbors(object = data, dims = sel.pc, verbose = F)
+  data <- FindClusters(object = data, resolution = 0.6, verbose = F)
+  # run tSNE
+  set.seed(1)
+  data <- RunTSNE(object = data, dims = sel.pc)
+  # runUMAP
+  set.seed(1)
+  data <- RunUMAP(object = data, dims = sel.pc)
+  
+  return(data)
+}
+```  
+
+
+### Plot overview of the data
+
+First plot PCA for first PCs, and the top loading genes for the PCs.
+
+Then tSNE and UMAP with clustering + detected genes
+
+
+
+
+```{r plot_seurat}
+plot_seurat <- function(data){
+  
+  # first plot some pca plots
+  p1 <- DimPlot(data, reduction = "pca")
+  p2 <- DimPlot(data, reduction = "pca", dims = 3:4)
+  p3 <- DimPlot(data, reduction = "pca", dims = 5:6)
+  p4 <- DimPlot(data, reduction = "pca", dims = 7:8)
+  grid.arrange(p1,p2,p3,p4, nrow=2)
+  # plot gene loadings to first 12 pcs.
+  print(DimHeatmap(data, dims=1:6, nfeatures = 20))
+  print(DimHeatmap(data, dims=7:12, nfeatures = 20))
+  
+  # then tSNE + UMAP
+  small.leg <- theme(legend.text = element_text(size=6))
+  p1 <- DimPlot(data, label = T, reduction = "tsne") + NoAxes() + small.leg
+  p2 <- FeaturePlot(data, features = "nFeature_RNA", reduction = "tsne") + NoAxes() + small.leg
+  p3 <- FeaturePlot(data, features = "percent.mito", reduction = "tsne") + NoAxes() + small.leg
+  grid.arrange(p1,p2,p3, nrow=2)  
+  
+  # plot split by sample
+  print(DimPlot(data, split.by = "Sample", reduction = "tsne"))
+  
+  
+  p1 <- DimPlot(data, label = T, reduction = "umap") + NoAxes() + small.leg
+  p2 <- FeaturePlot(data, features = "nFeature_RNA", reduction = "umap") + NoAxes() + small.leg
+  p3 <- FeaturePlot(data, features = "percent.mito", reduction = "umap") + NoAxes() + small.leg
+  grid.arrange(p1,p2,p3, nrow=2)  
+  # plot split by sample
+  print(DimPlot(data, split.by = "Sample", reduction = "umap"))  
+  
+  # plot some marker genes.
+  plot.genes <- c("TH","SLC6A3","SNAP25","GAP43", "NEFL","DLK1","OLIG1","GFAP","AQP4","COL1A1","DCN","FBLN1")
+  p1 <- FeaturePlot(data, features = plot.genes, reduction = "tsne", pt.size = 0.2, combine = F, cols = c("yellow","red","black"))
+  p1 <- lapply(p1, function(x) x + NoAxes() + NoLegend())
+  grid.arrange(grobs=p1, ncol=4)
+}
+```
+
+
+
+```{r all, warning = FALSE}
+force <- FALSE
+# use the clustered seurat object with all cells, 
+# will give coloring according to cluster in that analysis
+load("filtered_seurat_object.Rdata")
+samples <- unique(dataA@meta.data$Rat)
+for (sample in samples) {
+  print(sample)
+  plotfile = sprintf("Seurat_rat_%s.pdf", sample)
+  save.file = sprintf("seurat_object_%s.Rdata",sample)
+  
+  if (file.exists(save.file) & !force){
+    load(save.file)
+  }else{
+    ss <- run_seurat(sample, dataA)
+    save(ss, file=save.file)
+  }
+  
+  pdf(plotfile)
+  plot_seurat(ss)
+  dev.off()
+}
+
+```
+
+
+
+```{r}
+sessionInfo()
+```
