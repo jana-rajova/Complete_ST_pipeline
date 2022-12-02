@@ -3,8 +3,8 @@ import matplotlib
 import argparse
 
 parser = argparse.ArgumentParser()
-parser.add_argument('-c', '--cmap', type=str, default='Spectral')
-parser.add_argument('-n', '--ncolors', type=int, default=20)
+parser.add_argument('-c', '--cmap', type=str, default='jet')
+parser.add_argument('-n', '--ncolors', type=int, default=100)
 args = parser.parse_args()
 
 cmap = cm.get_cmap(args.cmap, args.ncolors)    # PiYG

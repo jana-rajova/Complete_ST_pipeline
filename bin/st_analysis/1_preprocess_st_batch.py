@@ -13,7 +13,7 @@ if __name__ == '__main__':
                         default='../data/ST_files/ST_matrix_STARsolo_PetterREFs_ensembl/')
     parser.add_argument('-i', '--image_path', type=str, help='folder containing image data',
                         default='../../Images_rev1/')
-    parser.add_argument('-s', '--sample_list', type=str, help='folder containing ST samples to process', default='../data/ST_files/STR_normal.txt')
+    parser.add_argument('-s', '--sample_list', type=str, help='folder containing ST samples to process', default='../data/ST_files/ST_files.txt')
     parser.add_argument('-o', '--output', type=str, help='folder to be used as an output',
                         default='../data/st_data_pre_processed/')
     parser.add_argument('--save_separate', default=1, help='save files for each samples separately')
@@ -54,7 +54,7 @@ if __name__ == '__main__':
         adata_st.transalate_ensembl()
 
     adata_st.anndata = merge_gene_symbol_duplicates(adata_st.anndata, symbol_column='gene_id')
-    adata_st.QC()
+    adata_st.QC(drop_genes=False)
     adata_st = adata_st.anndata
 
     # create the output_folder and save the datasets

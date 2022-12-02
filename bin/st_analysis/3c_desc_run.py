@@ -15,11 +15,11 @@ parser = argparse.ArgumentParser()
 parser.add_argument('-f', '--st_h5ad_folder', type=str,
 					default='../data/st_data_pre_processed/stdata_h5ad/')
 parser.add_argument('-s', '--sample_file', type=str,
-					default='../data/ST_files/STR_normal.txt')
-parser.add_argument('-d', '--dataset', type=str, default='STR')
+					default='../data/ST_files/TX.txt')
+parser.add_argument('-d', '--dataset', type=str, default='TX')
 parser.add_argument('-o', '--output', type=str,
 					default='../results/Batch_corrections/desc/')
-parser.add_argument('-r', '--resolution', type=float, default=0.3)
+parser.add_argument('-r', '--resolution', type=float, default=1.0)
 parser.add_argument('--mode', default='client')
 parser.add_argument('--host', default='127.0.0.1')
 parser.add_argument('--port', default=37237)
@@ -70,14 +70,15 @@ adata_merge = desc.train(adata_merge,
 				   save_encoder_weights=False)
 
 for sample in samples:
-	plot_ST(adata_merge, sample, show=False, output=f'{output}/plt/{sample}_desc_clusters.png', feat_max=[34, 32], color=f'desc_{args.resolution}')
+	plot_ST(adata_merge, sample, show=False, output=f'{output}/plt/', feat_max=[34, 32], color=f'desc_{args.resolution}')
 
 print(adata_merge)
 adata_merge.write_h5ad(f'{output}adata_desc.h5ad')
 desc_df = adata_merge.obs[['sample', 'feature']]
 desc_df['cluster'] = adata_merge.obs[f'desc_{args.resolution}']
-desc_df['umap_1'] = adata_merge.obsm[f'X_umap{args.resolution}'][:, 0]
-desc_df['umap_2'] = adata_merge.obsm[f'X_umap{args.resolution}'][:, 1]
+desc_df['umap1'] = adata_merge.obsm[f'X_umap{args.resolution}'][:, 0]
+desc_df['umap2'] = adata_merge.obsm[f'X_umap{args.resolution}'][:, 1]
+desc_df['sample'] = adata_merge.obs['sample']
 desc_df.to_csv(f"{output}{args.dataset}_desc_clusters_combined.tsv", sep='\t')
 
 sc.pl.umap(

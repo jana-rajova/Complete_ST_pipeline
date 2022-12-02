@@ -4,6 +4,7 @@ import anndata as ad
 import pandas as pd
 import numpy as np
 import mygene
+import seaborn as sns
 # from src.utils import *
 # import scanpy as sc
 import matplotlib.pyplot as plt
@@ -22,7 +23,7 @@ class STLoader:
         self.anndata = ad.AnnData()
 
     def load_stdata(self, st_path, sample):
-        sample_file = [st_path + x for x in os.listdir(st_path) if sample in x and 'stdata.tsv' in x]
+        sample_file = [st_path + x for x in os.listdir(st_path) if sample in x and '_stdata' in x]
         if len(sample_file) > 1:
             print('Conflicting sample files!')
             print(sample_file)
@@ -33,7 +34,8 @@ class STLoader:
             # read in the dataframe
             st_df = pd.read_csv(sample_file[0], sep='\t', index_col=0, header=0)
             print('dataset loaded')
-            orient_df(st_df)
+            st_df = orient_df(st_df)
+            print(st_df.shape)
             # print(st_df)
             unite_feature_notation(st_df)
             # print(st_df)
@@ -54,11 +56,13 @@ class STLoader:
 
             obs = pd.DataFrame(st_df.index)
             obs.columns = ['feature']
-            print(obs)
+            # print(obs)
             if '.' not in ' '.join(obs['feature'].to_list()):
                 obs['orig_feature'] = obs['feature']
 
+            print(extract_coordinartes(st_df.index.to_list()))
             coords = extract_coordinartes(st_df.index.to_list())
+
 
             obs['array_row'] = coords[:, 0].astype('float')
             obs['array_col'] = coords[:, 1].astype('float')
@@ -167,10 +171,11 @@ class ST_Anndata:
         print(type(sample_list[0]))
         assert type(sample_list[0]) == ad._core.anndata.AnnData
         self.anndata = ad.concat(sample_list,
-                                 uns_merge="first",
+                                 uns_merge='first',
                                  join='outer',
                                  merge='unique',
-                                 keys=samples)
+                                 keys=samples,
+                                 fill_value=0)
 
     def transalate_ensembl(self):
         if self.anndata.var.index[0].startswith('ENS'):
@@ -310,36 +315,43 @@ def unite_feature_notation(st_df):
 def orient_df(st_df):
     if re.search('X[0-9.-]+_[0-9.-]+', str(st_df.columns[0])) or re.search('[0-9.-]+x[0-9.-]+', str(st_df.columns[0])):
         st_df = st_df.transpose()
+    return st_df
 
-
-def plot_ST(adata, sample, show=True, output=False, feat_max=[34, 32], color='cluster', s=40, vmax_global=True):
-    im = adata.uns['spatial'][sample]['images']['hires']
+def plot_ST(adata, sample, show=True, output=False, feat_max=[34, 32], color='cluster', s=70, vmax_global=True):
+    sns.set(rc={'figure.figsize': (10, 10)})
     plt_df = pd.DataFrame()
     plt_df['x'] = adata.obs[adata.obs['sample'] == sample]['array_row'].astype(float).to_numpy()
-    plt_df['x'] = plt_df['x'] * (im.shape[1]*0.95) / feat_max[1]
     plt_df['y'] = adata.obs[adata.obs['sample'] == sample]['array_col'].astype(float).to_numpy()
-    plt_df['y'] = plt_df['y'] * (im.shape[0]*0.95) / feat_max[0]
 
+    print()
     if color in adata.obs.columns:
         ncat = len(adata.obs[color].unique())
         plt_df['c'] = adata.obs[adata.obs['sample'] == sample][color].astype(float).to_list()
         vmax = adata.obs[color].astype(float).max()
         stop = False
     elif color in adata.var.index:
+        print(f'{color} in var')
         ncat = len(np.unique(adata[:, color].X))
-        plt_df['c'] = adata[adata.obs['sample'] == sample, color].X
+        plt_df['c'] = adata[adata.obs['sample'] == sample, color].X.flatten().tolist()
         vmax = np.max(adata[:, color].X)
         stop = False
     else:
         print(f'{color} not found!')
         stop = True
     if stop == False:
-        if vmax_global == True:
+        if vmax_global:
             vmax = vmax
+        else:
+            vmax =  max(plt_df['c'])
+        print(f'vmax = {vmax}')
 
 
         if output or show:
-            plt.imshow(im)
+            if 'spatial' in adata.uns.keys():
+                im = adata.uns['spatial'][sample]['images']['hires']
+                plt_df['x'] = plt_df['x'] * (im.shape[1] * 0.95) / feat_max[1]
+                plt_df['y'] = plt_df['y'] * (im.shape[0] * 0.95) / feat_max[0]
+                plt.imshow(im)
             if ncat > 50:
                 plt.scatter(plt_df['x'], plt_df['y'], c=plt_df['c'], cmap='jet', s=s, label=color,
                             vmin=0, vmax=vmax)
@@ -357,8 +369,9 @@ def plot_ST(adata, sample, show=True, output=False, feat_max=[34, 32], color='cl
             plt.title(sample)
             if output:
                 # print(f'Plots will be saved in folder {output}')
-                os.makedirs(f'{output}{color}/', exist_ok=True)
-                plt.savefig(f'{output}{color}/{sample}_{color}_feature_plot.png', bbox_inches='tight', dpi=500)
+                os.makedirs(f'{output}/', exist_ok=True)
+                plt.savefig(f'{output}/{sample}_{color}_feature_plot.png', bbox_inches='tight', dpi=500)
+                plt.savefig(f'{output}/{sample}_{color}_feature_plot.pdf', bbox_inches='tight', dpi=500)
 
             if show == True:
                 plt.show()

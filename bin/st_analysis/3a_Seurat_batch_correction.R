@@ -11,8 +11,8 @@ options(future.globals.maxSize= 54428800000)
 
 #dataset is the name of the folder and will be added as the output directory and as a signifier to the output graphs and files
 resolution = 1
-dataset <- "TX"
-st.file <- "/media/Dropbox/MNM projects/Spatial transcriptomics project/Data analysis/Complete_ST_pipeline/data/ST_files/TX_good_quality.txt"
+dataset <- "TX-excluded"
+st.file <- "/media/Dropbox/MNM projects/Spatial transcriptomics project/Data analysis/Complete_ST_pipeline/data/ST_files/TX_excluded.txt"
 stdata.folder <- "/media/Dropbox/MNM projects/Spatial transcriptomics project/Data analysis/Complete_ST_pipeline/data/st_data_pre_processed/stdata_tsv/"
 output.dir <- paste0("/media/Dropbox/MNM projects/Spatial transcriptomics project/Data analysis/Complete_ST_pipeline/results/Batch_corrections/seurat/", dataset, "/")
 
@@ -92,16 +92,17 @@ pca_number <- max(which(pca_number > 0.1))
 
 
 
-ST.integrated <- FindNeighbors(ST.integrated, dims = 1:pca_number, k.param = 20, prune.SNN = 0.1, n.trees = 100)
+ST.integrated <- FindNeighbors(ST.integrated, dims = 1:pca_number, k.param = 20, prune.SNN = 1/15, n.trees = 100)
 
 # ST.integrated <- FindNeighbors(ST.integrated, dims = 1:10)
 
-ST.integrated <- FindClusters(ST.integrated, resolution = 0.5)
-
+ST.integrated <- FindClusters(ST.integrated, algorithm = 4, resolution = 1)
+DimPlot(ST.integrated, reduction = "umap")
+DimPlot(ST.integrated, reduction = "umap", split.by = 'seurat_clusters', ncol=3)
 #ST.integrated <- RunUMAP(ST.integrated, dims = 1:12)
 
 
-### If you want to explore different Louvain resolutions, use the following line.
+### If you want to explore different Leiden resolutions, use the following line.
 # It will create folders with the datasets and resolutions as a name and put the results in the folder
 # for (resolution in c(0.6, 0.8, 1.0, 1.2, 1.4, 1.6)){ 
 

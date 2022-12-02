@@ -158,5 +158,112 @@
 #
 #     return adata
 #
-#
+def plot_celltype_region_violins_separate(celltype_region_df,
+                                 all_celltypes,
+                                 singler_counts,
+                                 output,
+                                 compare_regions=['TX', 'STR']):
+
+    celltype_region_df = celltype_region_df[celltype_region_df['region'].isin(compare_regions)]
+    singler_celltypes = singler_counts.index.to_list()
+    singler_counts = singleR_counts/singleR_counts.sum()
+    print(singler_counts)
+    output = f'{output}/celltype_distr_separate_plt/'
+    os.makedirs(output, exist_ok=True)
+
+
+#     celltype_region_df_singler = celltype_region_df.copy()
+#     non_singler_celltypes = [x for x in all_celltypes if x not in singler_celltypes]
+#     celltype_region_df_singler['Other'] = celltype_region_df_singler[non_singler_celltypes].sum(axis=1)
+#     celltype_region_df_singler.drop(non_singler_celltypes, inplace=True, axis=1)
+
+
+    for df in [celltype_region_df]:
+        celltypes = [x for x in df.columns if x in set((singler_celltypes + all_celltypes))]
+
+        vmax = max(df[celltypes].max().max(), singler_counts.max())
+
+        fig, (ax1, ax2) = plt.subplots(nrows=1, ncols=2,
+                                       sharey=False,
+                                       figsize=(3, 4),
+                                       gridspec_kw={'width_ratios':[4,3]})
+
+        cmap = cm.get_cmap('Set1')
+        handles = [plt.plot([], color=cmap(c), ls="", marker="o")[0] for c in range(len(df['region'].unique()))]
+        labels = df['region'].unique()
+        print(labels)
+        sns.despine(trim=False)
+        for idx, ct in enumerate(celltypes):
+            sns.violinplot(y=ct, x='slide', ax=ax1,
+                           hue='region',
+                           cut=True,
+                           legend=False,
+                           palette='Set1',
+                           scale='width',
+                           bw=0.5,
+                           data=df,
+                           scale_hue=True,
+                           inner=None)
+            sns.stripplot(y=ct, x='slide', ax=ax1,
+                          hue='region',
+                          dodge=True,
+                          color='black',
+                          alpha=0.05,
+                          size=1,
+                          data=df)
+
+            sns.violinplot(x='region', y=ct, ax=ax2,
+                           cut=True,
+                           scale='width',
+                           bw=0.5,
+                           palette='Set2',
+                           data=df,
+                           inner=None
+                         )
+            sns.stripplot(x='region', y=ct, ax=ax2,
+                          jitter=0.1,
+                          dodge=True,
+                          color='black',
+                          alpha=0.05,
+                          size=1,
+                          data=df)
+
+
+            ax1.get_legend().remove()
+            ax1.set_ylim(0, vmax)
+            ax2.set_ylim(0, vmax)
+#             ax[r, c+1].get_legend().remove()
+            ax2.get_yaxis().set_visible(False)
+            ax2.spines['left'].set_visible(False)
+            ax2.set_ylabel('')
+            ax2.set_xlabel('Combined')
+            #ax[r, c+1].set_frame_on(False)
+            ax_ct = fig.add_subplot(1, 1, idx+1, frameon = False)
+            ax_ct.set_xticks([])
+            ax_ct.set_yticks([])
+            ax_ct.set_ylim(0, vmax)
+            if ct in singler_celltypes:
+                ax_ct.axhline(y=singler_counts[ct],
+                              xmin=-0.05,
+                              xmax=1.33,
+                              c="red",
+                              linewidth=2,
+                              linestyle='--')
+            ax_ct.set_title('\n'.join(wrap(ct, 40)))
+
+
+            ax2.legend(handles, labels, bbox_to_anchor=(1.05, 1), loc='upper left',
+                             title='\n'.join(wrap('Feature area/slide', 20)))
+            plt.tight_layout(pad=0.4)
+            if ct in singler_celltypes:
+                file_path = f'{output}{ct}_distribution_violin_SingleR.png'
+#                 plt.savefig(file_path, bbox_inches='tight', dpi=500)
+                file_path = f'{output}{ct}_distribution_violin_SingleR.pdf'
+#                 plt.savefig(file_path, bbox_inches='tight', dpi=500)
+            else:
+                file_path = f'{output}{ct}_distribution_violin.png'
+#                 plt.savefig(file_path, bbox_inches='tight', dpi=500)
+                file_path = f'{output}{ct}_distribution_violin.pdf'
+#                 plt.savefig(file_path, bbox_inches='tight', dpi=500)
+            plt.show()
 #

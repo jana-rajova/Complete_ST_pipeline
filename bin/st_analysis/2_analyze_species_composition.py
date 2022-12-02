@@ -18,7 +18,7 @@ if __name__ == '__main__':
     parser.add_argument('-f','--st_preprocessed_folder', type=str, help='folder containing ST data',
                         default='../data/st_data_pre_processed/stdata_h5ad/')
     parser.add_argument('-s', '--sample_list', type=str, help='txt files with samples',
-                        default='../data/ST_files/STR_normal.txt')
+                        default='../data/ST_files/TX.txt')
     parser.add_argument('-e', '--ensembl_path', type=str, help='folder containing image data',
                         default='../data/ST_files/ST_matrix_STARsolo_PetterREFs_ensembl/')
     parser.add_argument('-o', '--overwrite', type=int, help='overwrite old file',
@@ -51,7 +51,7 @@ if __name__ == '__main__':
 
         # save the datasets
         if args.overwrite == True:
-            output = f'{args.st_preprocessed_folder}{sample}_stdata.h5ad'
+            output = f'{args.st_preprocessed_folder}{sample}_stdata'
             print(f'file {output} will be overwritten')
 
 

@@ -17,8 +17,8 @@ if __name__ == '__main__':
     parser.add_argument('-f', '--st_h5ad_folder', type=str,
                         default='../data/st_data_pre_processed/stdata_h5ad/')
     parser.add_argument('-s', '--sample_file', type=str,
-                        default='../data/ST_files/STR_normal.txt')
-    parser.add_argument('-d', '--dataset', type=str, default='STR')
+                        default='../data/ST_files/TX.txt')
+    parser.add_argument('-d', '--dataset', type=str, default='TX')
     parser.add_argument('-o', '--output', type=str,
                         default='../results/Batch_corrections/scanorama/')
     parser.add_argument('-r', '--resolution', type=float, default=1.0)
@@ -48,6 +48,7 @@ if __name__ == '__main__':
         label='batch',
         uns_merge="first"
     )
+    print(adata_spatial.obs)
     adata_spatial_copy = adata_spatial.copy()
 
     sc.pp.neighbors(adata_spatial, use_rep="X_scanorama", knn=20)
@@ -59,18 +60,19 @@ if __name__ == '__main__':
         palette='Spectral', return_fig=True, wspace=0.2
     )
 
-    plt.savefig(f'{output}plt/{args.name}_scanorama_UMAP.pdf', bbox_inches='tight', dpi=400)
+    plt.savefig(f'{output}plt/{args.dataset}_scanorama_UMAP.pdf', bbox_inches='tight', dpi=400)
     plt.clf()
 
     for sample in samples:
         print(sample)
-        plot_ST(adata_spatial, sample=sample, output=f'{output}plt/{sample}_scanorama_clusters.png', show=False)
+        plot_ST(adata_spatial, sample=sample, output=f'{output}plt/', show=False)
 
 
     adata_spatial.write_h5ad(f'{output}st_adata.h5ad')
 
     scanorama_df = pd.DataFrame(adata_spatial.obs[['cluster', 'feature']], columns=['cluster', 'feature'])
-    scanorama_df['umap_1'] = adata_spatial.obsm['X_umap'][:, 0]
-    scanorama_df['umap_2'] = adata_spatial.obsm['X_umap'][:, 1]
+    scanorama_df['umap1'] = adata_spatial.obsm['X_umap'][:, 0]
+    scanorama_df['umap2'] = adata_spatial.obsm['X_umap'][:, 1]
+    scanorama_df['sample'] = adata_spatial.obs['sample']
 
     scanorama_df.to_csv(f'{output}{args.dataset}_scanorama_clusters_combined.tsv', sep='\t')

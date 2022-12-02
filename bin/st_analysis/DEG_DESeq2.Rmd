@@ -1,0 +1,257 @@
+---
+  title: "SingleR_analysis"
+output: html_document
+---
+  
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+  
+```{r load libraries}
+suppressMessages(library(SingleCellExperiment))
+suppressMessages(require(DESeq2))
+# suppressMessages(require(Matrix))
+# suppressMessages(require(gridExtra))
+suppressMessages(require(ggplot2))
+# suppressMessages(require(pheatmap))
+# suppressMessages(library(dplyr))
+# #BiocManager::install("scuttle")
+# suppressMessages(library(SummarizedExperiment))
+# suppressMessages(library(SingleR))
+# suppressMessages(library(patchwork))
+# suppressMessages(library(ggrepel))
+# suppressMessages(library(scuttle))
+library(pheatmap)
+library(EnhancedVolcano)
+```
+### Comparison selection
+In the following block, uncomment comparison, which you want to make
+```{r setting contrast and output}
+# contrast.name = 'hostvsTX'
+# count.fn = 'counts_TX'
+# ann.fn = 'annotation_TX'
+# contrast = c('region', 'TX', 'host')
+# ref.reg = 'TX'
+  
+contrast.name = 'STRvsTX'
+count.fn = 'counts.t'
+ann.fn = 'annotation.t'
+contrast = c('region', 'TX', 'STR')
+ref.reg = 'TX'
+# 
+# contrast.name = 'TXvsSN'
+# count.fn = 'counts.t'
+# ann.fn = 'annotation.t'
+# contrast = c('region', 'TX', 'SN')
+# ref.reg = 'TX'
+
+# contrast.name = 'SNvsOther'
+# count.fn = 'counts.t'
+# ann.fn = 'annotation.t'
+# contrast = c('region', 'SN', 'unlabelled_midbrain_regions')
+# ref.reg = 'SN'
+```
+
+
+```{r load data}
+# name of the folder with the matrices themselves
+# add the path to single cell data 
+out.folder = paste0('../../results/Batch_corrections/seurat/DEG_analyses/', contrast.name, '_DEG/')
+dir.create(out.folder, showWarnings = FALSE)
+
+# load TX data
+pseudobulk.folder.TX = "../../results/Batch_corrections/seurat/TX/pseudobulk/"
+
+# find files in the folder
+mat.file.TX = grep(count.fn, list.files(pseudobulk.folder.TX), value=TRUE)
+cell.attr.file.TX = grep(ann.fn, list.files(pseudobulk.folder.TX), value=TRUE)
+
+# load count and attribute files
+mtx.TX = as.matrix(t(as.data.frame(read.delim(paste0(pseudobulk.folder.TX, mat.file.TX), header=TRUE, row.names=1, check.names=FALSE, sep = '\t'))))
+attr.TX = read.delim(paste0(pseudobulk.folder.TX, cell.attr.file.TX), header=TRUE, row.names=1, check.names=FALSE, sep = '\t')
+
+# load SN data
+pseudobulk.folder.SN = "../../results/Batch_corrections/seurat/SN/pseudobulk/"
+# load count and attribute files for SN
+mat.file.SN = grep(count.fn, list.files(pseudobulk.folder.SN), value=TRUE)
+cell.attr.file.SN = grep(ann.fn, list.files(pseudobulk.folder.SN), value=TRUE)
+mtx.SN = as.matrix(t(as.data.frame(read.delim(paste0(pseudobulk.folder.SN, mat.file.SN), header=TRUE, row.names=1, check.names=FALSE, sep = '\t'))))
+attr.SN = read.delim(paste0(pseudobulk.folder.SN, cell.attr.file.SN), header=TRUE, row.names=1, check.names=FALSE, sep = '\t')
+
+attr.TX[attr.TX == 'other'] = 'unlabelled_striatal_regions'
+attr.SN[attr.SN == 'other'] = 'unlabelled_midbrain_regions'
+
+# merge SN and TX
+mtx = merge(mtx.TX, mtx.SN, by=0, all=TRUE, sort=FALSE)
+rownames(mtx) = mtx$Row.names
+mtx$Row.names = NULL
+mtx[is.na(mtx)] = 0
+
+mtx = merge(mtx.TX, mtx.SN, by=0, all=TRUE, sort=FALSE)
+rownames(mtx) = mtx$Row.names
+mtx$Row.names = NULL
+mtx[is.na(mtx)] = 0
+
+attr = merge(attr.TX, attr.SN, all=TRUE, sort=FALSE)
+attr[is.na(attr)] = 0
+  
+ddsFull = DESeqDataSetFromMatrix(countData = round(mtx, 0),
+                                            colData = attr,
+                                            design = ~ region)
+ddsFull
+ddsFull$region = relevel(ddsFull$region, ref=ref.reg)
+```
+```{r}
+as.data.frame( colData( ddsFull )[ ,c("slide","region") ] )
+
+# ddsCollapsed = collapseReplicates(ddsFull,
+                                   # groupby = ddsFull$region,
+                                   # run = ddsFull$pseubobuk_cluster )
+# head( as.data.frame( colData(ddsCollapsed)[ ,c("runsCollapsed") ] ), 12 )
+dds = DESeq(ddsFull)
+res = results(dds, contrast=contrast)
+res['TH',]
+res.0.01 = results(dds, alpha=0.001, contrast=contrast)
+summary(res.0.01)
+res.df = as.data.frame(res.0.01)
+```
+
+```{r rlog, fig.height=20, fig.width=5}
+vld = vst(dds)
+res.0.01.f = na.omit(res.0.01)
+res.0.01.f = res.0.01.f[res.0.01.f$padj<0.001,]
+resSort = res.0.01.f[order(res.0.01.f$log2FoldChange, decreasing=TRUE),]
+topgenes = head(rownames(resSort),100)
+mat = assay(vld)[topgenes,]
+mat = mat - rowMeans(mat)
+df = as.data.frame(colData(dds)[,c('region', 'sample')])
+# order annotation based on region
+df = df %>% arrange(region)
+
+
+df$region = factor(df$region, levels = c('unlabelled_midbrain_regions', 'SN', "TX", "STR","CTX", 'CC','unlabelled_striatal_regions'))
+df = df[order(df$region),]
+# reorder the matrix based on the annotation
+mat.ordered = mat[, rownames(df)] 
+
+height = 0.1 * length(topgenes) + 3
+
+# define the colours
+annoCol = list(sample = c(ST3_C2 = 'deepskyblue1',
+                       ST3_D1 = 'deepskyblue1',
+                       ST3_D2 = 'deepskyblue1',
+                       ST3_E1 = 'deepskyblue1',
+                       ST3_E2 = 'deepskyblue1',
+                       CN56_D2 = 'aquamarine',
+                       CN56_E1 = 'aquamarine',
+                       CN56_E2 = 'aquamarine',
+                       CN53_C1 = 'cyan',
+                       CN57_E1 = 'mediumorchid1',
+                       CN57_E2 = 'mediumorchid1',
+                       ST1_C1 = 'mediumpurple1',
+                       ST1_C2 = 'mediumpurple1',
+                       ST1_D2 = 'mediumpurple1',
+                       CN53_E1 = 'purple4',
+                       CN53_E2 = 'purple4'))
+annoCol = append(list(region = c(TX = 'darkgoldenrod1',
+                                 STR = 'coral1',
+                                 SN = 'blue',
+                                 unlabelled_midbrain_regions = 'lavender',
+                                 unlabelled_striatal_regions = 'lightgoldenrodyellow',
+                                CTX = 'lightcyan1',
+                                CC = 'lightblue2',
+                                host = 'darkolivegreen2'
+                                )), annoCol)
+
+annoCol = append(list(sample = annoCol$sample[unique(attr$sample)]), list(region = annoCol$region[unique(attr$region)]))
+
+# break test
+# use floor and ceiling to deal with even/odd length pallettelengths
+paletteLength = 100
+myBreaks <- c(seq(min(mat), 0, length.out=ceiling(paletteLength/2) + 1), 
+              seq(max(mat)/paletteLength, max(mat), length.out=floor(paletteLength/2)))
+
+
+# create heatmaps
+while (!is.null(dev.list()))  dev.off()
+pdf(paste0(out.folder, 'DEG_DESeq2_',contrast.name, '_row_scaled.pdf'), width = 5, height = height)
+pheatmap(mat.ordered, annotation_col=df,
+         scale = 'row',
+         color = colorRampPalette(rev(brewer.pal(n = 7, name = "RdBu")))(100),
+         annotation_colors = annoCol,
+         # clustering_method = 'ward.D2',
+         breaks = myBreaks,
+         show_colnames = FALSE,
+         cluster_cols = FALSE,
+         cluster_rows = FALSE,
+         show_rownames=TRUE)
+dev.off()
+
+pdf(paste0(out.folder, 'DEG_DESeq2_', contrast.name,'_unscaled.pdf'), width = 5, height = height)
+pheatmap(mat.ordered, annotation_col=df,
+         color = colorRampPalette(rev(brewer.pal(n = 7, name = "RdBu")))(100),
+         annotation_colors = annoCol,
+         scale = 'none',
+         # clustering_method = 'ward.D2',
+         breaks = myBreaks,
+         show_colnames = FALSE,
+         cluster_rows = FALSE,
+         cluster_cols = FALSE,
+         show_rownames=TRUE)
+dev.off()
+```
+
+```{r volcano plot, fig.height=10, fig.width=10}
+res = lfcShrink(dds, contrast = contrast, res=res, type = 'normal')
+
+TX_genes = c('ALDH1A1','TH','SLC18A2', 'SLC6A3','PBX1','COL1A1','AQP4','SOX9')
+gene_highlight =  c(TX_genes, head(rownames(resSort),10))
+fileVP = paste0(out.folder, 'VP_DEG_DESeq2_', contrast.name)
+png(paste0(fileVP, '.png'), units = 'cm', width = 30, height = 30, res=100)
+EnhancedVolcano(res,
+                lab = rownames(res),
+                x = 'log2FoldChange',
+                y = 'padj',
+                selectLab = gene_highlight,
+                xlab = bquote(~Log[2]~ 'fold change'),
+                pCutoff = 10e-3,
+                FCcutoff = 1.0,
+                pointSize = 3.0,
+                labSize = 5.0,
+                labCol = 'black',
+                labFace = 'bold',
+                boxedLabels = TRUE,
+                colAlpha = 4/5,
+                legendPosition = 'right',
+                legendLabSize = 10,
+                legendIconSize = 4.0,
+                drawConnectors = TRUE,
+                widthConnectors = 1.0,
+                colConnectors = 'black')
+dev.off()
+
+pdf(paste0(fileVP, '.pdf'), width = 10, height = 10)
+EnhancedVolcano(res,
+                lab = rownames(res),
+                x = 'log2FoldChange',
+                y = 'padj',
+                selectLab = gene_highlight,
+                xlab = bquote(~Log[2]~ 'fold change'),
+                pCutoff = 10e-4,
+                FCcutoff = 1.0,
+                pointSize = 3.0,
+                labSize = 5.0,
+                labCol = 'black',
+                labFace = 'bold',
+                boxedLabels = TRUE,
+                colAlpha = 4/5,
+                legendPosition = 'right',
+                legendLabSize = 10,
+                legendIconSize = 4.0,
+                drawConnectors = TRUE,
+                widthConnectors = 1.0,
+                colConnectors = 'black')
+dev.off()
+```
+

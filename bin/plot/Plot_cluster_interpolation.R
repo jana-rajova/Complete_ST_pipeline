@@ -5,28 +5,29 @@ library(akima)
 library(future.apply)
 library(stringr)
 library(scales)
-plan(multisession)
+plan(multisession, workers=20)
 
 Image.locations <- '/media/Dropbox/MNM projects/Spatial transcriptomics project/Data analysis/Images_rev1/'
 interpol.mask.location <- '/media/Dropbox/MNM projects/Spatial transcriptomics project/Data analysis/Complete_ST_pipeline/data/ST_interpolation_masks/'
 
 alg <- 'seurat'
 cluster.folder <- paste0('/media/Dropbox/MNM projects/Spatial transcriptomics project/Data analysis/Complete_ST_pipeline/results/Batch_corrections/', alg, '/')
-dataset <- 'TX'
+dataset <- 'SN'
 cluster.folder <- paste0(cluster.folder, dataset, '/')
 plot.folder <- paste0(cluster.folder, 'plt/')
-dir.create(plot.folder, recursive = TRUE, showWarnings = FALSE)
+dir.create(paste0(plot.folder,'/png'), recursive = TRUE, showWarnings = FALSE)
 cluster.file <- grep('_clusters_combined.tsv', list.files(cluster.folder), value = TRUE)
 cluster.table <- read.table(paste0(cluster.folder, cluster.file), header = TRUE)
 #load cluster files
 sample_ <- 'ST3_D2'
 
-cluster.colors.matrix.general <- c('#9e0142', '#a40743', '#a90d45', '#af1346', '#b41a47', '#ba2049', '#bf264a', '#c52c4b', '#ca324d', '#d0384e', '#d53e4f', '#d8434e', '#dc484c', '#df4d4b', '#e2514a', '#e55649', '#e85b48', '#eb6046', '#ee6445', '#f16944', '#f46e44', '#f57547', '#f67b4a', '#f7824d', '#f88950', '#f98f53', '#fa9656', '#fb9c59', '#fba35c', '#fca95f', '#fdb062', '#fdb567', '#fdba6b', '#fdbf6f', '#fdc473', '#fec977', '#fece7c', '#fed380', '#fed884', '#fedd88', '#fee18d', '#fee492', '#fee898', '#feeb9d', '#feeea2', '#fff1a7', '#fff4ad', '#fff7b2', '#fffab7', '#fffdbc', '#fefebd', '#fbfdb9', '#f9fcb5', '#f6fbb1', '#f4faad', '#f1f9a9', '#eff8a5', '#ecf7a1', '#eaf69e', '#e7f59a', '#e2f499', '#dcf19a', '#d7ef9b', '#d1ec9c', '#cbea9e', '#c5e79f', '#bfe5a0', '#b9e3a1', '#b3e0a2', '#addea4', '#a6dba4', '#9fd8a4', '#98d6a4', '#91d3a4', '#8ad0a4', '#83cda5', '#7ccba5', '#75c8a5', '#6ec5a5', '#67c3a5', '#62bda7', '#5db7a9', '#57b2ac', '#52acae', '#4da6b1', '#48a0b3', '#429ab5', '#3d94b8', '#388eba', '#3389bd', '#3683bb', '#3a7db8', '#3f77b5', '#4372b2', '#486cb0', '#4c66ad', '#5160aa', '#555ba7', '#5a55a5', '#5e4fa2'
+cluster.colors.matrix.general <- c('#000080', '#00008b', '#000097', '#0000a3', '#0000ae', '#0000ba', '#0000c6', '#0000d1', '#0000dd', '#0000e9', '#0000f5', '#0000ff', '#0000ff', '#0006ff', '#0011ff', '#001bff', '#0025ff', '#0030ff', '#003aff', '#0044ff', '#004fff', '#0059ff', '#0063ff', '#006dff', '#0078ff', '#0082ff', '#008cff', '#0097ff', '#00a1ff', '#00abff', '#00b6ff', '#00c0ff', '#00caff', '#00d5ff', '#00dffc', '#03e9f4', '#0bf3ec', '#14fee3', '#1cffdb', '#24ffd3', '#2cffca', '#35ffc2', '#3dffba', '#45ffb1', '#4effa9', '#56ffa1', '#5eff98', '#67ff90', '#6fff88', '#77ff80', '#80ff77', '#88ff6f', '#90ff67', '#98ff5e', '#a1ff56', '#a9ff4e', '#b1ff45', '#baff3d', '#c2ff35', '#caff2c', '#d3ff24', '#dbff1c', '#e3ff14', '#ecff0b', '#f4f903', '#fcef00', '#ffe600', '#ffdc00', '#ffd300', '#ffc900', '#ffc000', '#ffb600', '#ffad00', '#ffa300', '#ff9900', '#ff9000', '#ff8600', '#ff7d00', '#ff7300', '#ff6a00', '#ff6000', '#ff5700', '#ff4d00', '#ff4400', '#ff3a00', '#ff3100', '#ff2700', '#ff1d00', '#ff1400', '#f50a00', '#e90100', '#dd0000', '#d10000', '#c60000', '#ba0000', '#ae0000', '#a30000', '#970000', '#8b0000', '#800000'
+
 )
 
 samples <- unique(cluster.table$sample)
 
-if (alg != 'non_corrected'){
+if (dataset != 'separately_clustered'){
   #no of colors needed: # you can generate the colors from a cmap of your choice in "color picker.py"
   no.clusters <- length(unique(cluster.table$cluster))
   print(no.clusters)
@@ -37,6 +38,7 @@ if (alg != 'non_corrected'){
   
 
 for (sample_ in samples){
+  print(sample_)
   if (file.exists(paste0(Image.locations,'corrected_png/', sample_,'_HE.png'))){
     he.image <- readPNG(paste0(Image.locations,'corrected_png/', sample_,'_HE.png'))
   } else {
@@ -49,7 +51,7 @@ for (sample_ in samples){
   cluster.dataframe <- subset(cluster.table, sample == sample_)
   clusters <- cluster.dataframe$cluster
   
-  if (is.null(cluster.colors.matrix)){
+  if (dataset == 'separately_clustered'){
     cluster.colors.matrix <- cluster.colors.matrix.general[round(seq(2, length(cluster.colors.matrix.general), 
                                                                      length=length(unique(clusters) +1)), 0)]
   }
@@ -71,7 +73,7 @@ for (sample_ in samples){
   coords <- as.numeric(coords)
   coords = t(matrix(coords,nrow = 2))
   #img.2.size <- round(50000*(length(coords)/2/1000*(1.1)), 0)
-  img.2.size <- limit*nrow(img)
+  
   
   
   max.x = max(coords[,1]) + 0.5
@@ -87,16 +89,15 @@ for (sample_ in samples){
   # C. Set the percentage of dots you want to keep, nrow(img.2) should not be more
   # than 50,000 (if the plot of tissue morphology looks OK?).
   
-  limit = 0.01
-  
+  # limit = 0.1
+  feature.multiplier = 1
   set.seed(1)
   
-  
-  #img.2 = img[sample(nrow(img),size=limit*nrow(img),replace=FALSE),]
-  img.2 = img[sample(nrow(img), size=img.2.size, replace=FALSE),]
-  
+  img.2.size <- feature.multiplier * length(clusters)
+  img.2 = img[sample(nrow(img),size=img.2.size,replace=FALSE),]
+ 
   print(paste0("Number of spots: ", nrow(img.2)))
-  
+
   set.seed(NULL, normal.kind = "default")
   
   par(pin = c(max(img[,1]) * 0.1, max(img[,2]) * 0.1))
@@ -133,33 +134,39 @@ for (sample_ in samples){
   
   
   new.set2.file <- paste0(interpol.mask.location, sample_, '_newset2.tsv')
- if (file.exists(new.set2.file)){
-   new.set2 <- as.integer(read.table(new.set2.file)$V1)
-   if (length(new.set2) != img.2.size){
-     print(paste0("Calculating 'new.set2' for ", sample_, " this might take a while..."))
-     new.set2 = future_apply(set1, 1, dist2b)
-     dir.create(interpol.mask.location, showWarnings = FALSE, recursive = TRUE)
-     write.table(x = new.set2, file = paste0(interpol.mask.location, sample_, '_newset2.tsv'),
-                 row.names = FALSE, col.names = FALSE, quote = FALSE, sep = '\t')
-   }
-   else {
-     print(paste0("Loading 'new.set2' for ", sample_))
-   new.set2 <- as.integer(read.table(new.set2.file)$V1)
-   print(length(new.set2))
-   }
- } 
- if (!file.exists(new.set2.file)) {
-    print(paste0("Calculating 'new.set2' for ", sample_, " this might take a while..."))
-    new.set2 = future_apply(set1, 1, dist2b)
-    dir.create(interpol.mask.location, showWarnings = FALSE, recursive = TRUE)
-    write.table(x = new.set2, file = new.set2.file,
-                row.names = FALSE, col.names = FALSE, quote = FALSE, sep = '\t')
-  }
-  section.input = cbind(img.2[,1], img.2[,2], new.set2)
+  # if (file.exists(new.set2.file)){
+  #   print(paste0('Found ', new.set2.file))
+  #   new.set2 <- as.integer(read.table(new.set2.file)$V1)
+  #   if (length(new.set2) != img.2.size){
+  #     plan(multisession, workers = 20)
+  #     print(paste(length(new.set2), img.2.size))
+  #     print(paste0("Calculating 'new.set2' for ", sample_, " this might take a while..."))
+  #     new.set2 = future_apply(set1, 1, dist2b)
+  #     dir.create(interpol.mask.location, showWarnings = FALSE, recursive = TRUE)
+  #     write.table(x = new.set2, file = paste0(interpol.mask.location, sample_, '_newset2.tsv'),
+  #                 row.names = FALSE, col.names = FALSE, quote = FALSE, sep = '\t')
+  #   }
+  #   else {
+  #     print(paste0("Loading 'new.set2' for ", sample_))
+  #     new.set2 <- as.integer(read.table(new.set2.file)$V1)
+  #     print(length(new.set2))
+  #   }
+  # } 
+  # if (!file.exists(new.set2.file)) {
+    # plan(multisession, workers = 20)
+    # print(paste0("Calculating 'new.set2' for ", sample_, " this might take a while..."))
+    # new.set2 = future_apply(set1, 1, dist2b)
+    # dir.create(interpol.mask.location, showWarnings = FALSE, recursive = TRUE)
+    # write.table(x = new.set2, file = new.set2.file,
+                # row.names = FALSE, col.names = FALSE, quote = FALSE, sep = '\t')
+  # }
   
+  # section.input = cbind(img.2[,1], img.2[,2], new.set2)
+  section.input = cbind(img.2[,1], img.2[,2])
   y = r@nrows
   
-  colnames(section.input) = c(x, y, 'grid.cell')
+  # colnames(section.input) = c(x, y, 'grid.cell')
+  colnames(section.input) = c(x, y)
   
   #if there is cluster no0- push the while queue, R has no idea what is index 0
   if (min(cluster.table$cluster)==0){
@@ -168,6 +175,7 @@ for (sample_ in samples){
 
   cluster.colors <- clusters
   for (i in unique(clusters)){
+    # print(typeof(i))
     cluster.colors = gsub(paste0('^', i, '$'), cluster.colors.matrix[i], cluster.colors)
   }
   
@@ -194,9 +202,9 @@ for (sample_ in samples){
   plot(c(1,35), c(33,1), ylab = '', xlab = '', xaxt = 'n', yaxt = 'n', bty = 'n', col = 'white')
   rasterImage(he.image, 1, 1, 35, 33)
   par(new = T)
-  plot(x, y, cex = 3, ylim = c(35, 1), xlim = c(1, 33), ylab = '', xlab = '', xaxt = 'n', yaxt = 'n', bty = 'n', col = alpha(cluster.colors, 0.5), pch = 16)
+  plot(x, y, cex = 2.5, ylim = c(35, 1), xlim = c(1, 33), ylab = '', xlab = '', xaxt = 'n', yaxt = 'n', bty = 'n', col = alpha(cluster.colors, 0.5), pch = 16)
   
-  legend(-1, 0, c(unique(clusters)), col = cluster.colors.matrix[unique(clusters)] , pch = 19, xpd = TRUE)
+  legend(-1, 0, c(sort(unique(clusters))), col = cluster.colors.matrix[sort(unique(clusters))] , pch = 19, xpd = TRUE)
   
   dev.off()
   
@@ -238,64 +246,111 @@ for (sample_ in samples){
   }
   
   
-  x = as.numeric(colnames(section.input)[1])
-  y = as.numeric(colnames(section.input)[2])
+  # x = as.numeric(colnames(section.input)[1])
+  # y = as.numeric(colnames(section.input)[2])
   
+  x = 500
+  y = round(x * (as.numeric(colnames(section.input)[2])/as.numeric(colnames(section.input)[1])), 0)
   cols.list = cluster.colors.matrix
   mycol = c()
   cluster.int = matrix(nrow = 0, ncol = 3)
   
-  for (i in unique(clusters)){
-    coords = cluster.dataframe$feature
-    coords = unlist(strsplit(coords, "_"))
-    coords = as.numeric(gsub('X', '', coords))
-    coords = t(matrix(coords,nrow = 2))
-    cluster.exp = cbind(coords, clusters.table[,i])
-    
-    x.1 = as.numeric(cluster.exp[,1])
-    y.1 = as.numeric(cluster.exp[,2])
-    z.1 = as.numeric(cluster.exp[,3])
-    
-    s1 =  interp(x.1, y.1, z.1, nx = x, ny = y, duplicate = 'strip' )
-    mat.1 = s1$z
-    
-    mat.1 = as.data.frame(mat.1)
+  coords = cluster.dataframe$feature
+  coords = unlist(strsplit(coords, "_"))
+  coords = as.numeric(gsub('X', '', coords))
+  coords = t(matrix(coords,nrow = 2))
+  cluster.exp = cbind(coords,cluster.dataframe$cluster)
+  if (min(cluster.exp[, 3])==0){
+    cluster.exp[, 3] <- cluster.exp[, 3] + 1
+  }
+  
+  x.1 = as.numeric(cluster.exp[,1])
+  y.1 = as.numeric(cluster.exp[,2])
+  cluster.ex.df = data.frame(row.names = seq(1, x*y))
+  print('Calculating interpolation')
+  for (cluster in sort(unique(cluster.exp[,3]))){
+    z.1 = as.numeric(as.numeric(cluster.exp[,3]) == as.numeric(cluster))
+    s1 =  interp(x.1, y.1, z.1, nx = x, ny = y, linear = TRUE)
+    x.coord = s1$x
+    y.coord = s1$y
+    s1 = s1$z
+    mat.1 = as.data.frame(s1)
     colnames(mat.1) = c(1:y)
     mat.1 = mat.1[,rev(colnames(mat.1)),]
     mat.1 = as.matrix(mat.1)
-    
     col.C1 = as.numeric(mat.1)
-    set = col.C1[section.input[,3]]
-    section.C1.xyz.value = cbind(section.input[,1:3], set)
-    
-    cols = cols.list[i]
-    
-    breaks = seq(from = 0, to = 1, length = 100)
-    rb.pal = colorRampPaletteAlpha(c(addalpha(cols, 0), addalpha(cols, 1)), 100)
-    
-    dat.col = rb.pal[as.numeric(cut(section.C1.xyz.value[,4],breaks = breaks))]
-    
-    mycol = cbind(mycol, dat.col)
-    
-    cluster.int.1 = cbind(section.C1.xyz.value[,1], section.C1.xyz.value[,2], section.C1.xyz.value[,4])
-    
-    cluster.int = rbind(cluster.int, cluster.int.1)
-    
+    # set = col.C1[section.input[,3]]
+    cluster.ex.df[, as.character(cluster)] = col.C1
   }
+  cluster.ex.df = apply(cluster.ex.df,1, which.max)
+  cols  = c()
+  count = 0
+  print('Mapping clusters')
+  for (val in cluster.ex.df){
+    if (identical(val, integer(0))){
+      cols = c(cols, NA)
+      count = count + 1
+    } else {
+    cols= c(cols, as.numeric(names(val)))
+    }
+  }
+
+  a = rep(x.coord, length(y.coord))
+  b = c()
+  for (y in y.coord){
+    b = c(b, rep(y, length(x.coord)))
+  }
+  colx = cols
+  for (i in na.omit(sort(unique(cols)))){
+    print(i)
+    colx = gsub(paste0('^', i, '$'), cluster.colors.matrix[i], colx)
+  }
+  df = data.frame(a,b, colx)
+  df.nona = na.omit(df)
+  # plot(df.nona[,1], df.nona[,2], col = df.nona[,3], cex=0.1, pch=19)
+  # 
+  # z.1 = as.numeric(as.numeric(cluster.exp[,3]))
+  # 
+  # s1 =  interp(x.1, y.1, z.1, nx = x, ny = y, linear = FALSE)
+  # mat.1 = s1$z
+  # 
+  # mat.1 = as.data.frame(mat.1)
+  # colnames(mat.1) = c(1:y)
+  # mat.1 = mat.1[,rev(colnames(mat.1)),]
+  # mat.1 = as.matrix(mat.1)
+  # 
+  # col.C1 = as.numeric(mat.1)
+  # set = col.C1[section.input[,3]]
+  # section.C1.xyz.value = cbind(section.input[,1:3], cols)
+  # # section.C1.xyz.value = cbind(section.C1.xyz.value, as.numeric(lapply(section.C1.xyz.value[,4], round, 0)))
+  # section.C1.xyz.value = cbind(section.C1.xyz.value, section.C1.xyz.value[, 4])
+  # for (i in na.omit(sort(unique(section.C1.xyz.value[, 4])))){
+  #   print(i)
+  #   section.C1.xyz.value[, 5] = gsub(paste0('^', i, '$'), cluster.colors.matrix[i], section.C1.xyz.value[, 5])
+  # }
   
   # M. Finally, plot the interpolated clusters. As an optional step, this image
   # can be combined with the grey-scale image for better visualization (see
   # separate instructions).
   
   out.file = paste(sample_, '_clusters_interpolated_', alg, '.pdf', sep = '')
-  pdf(paste0(plot.folder, out.file), onefile = TRUE, useDingbats = FALSE, height = y * 0.075, width = x * 0.075)
+  pdf(paste0(plot.folder, out.file), onefile = TRUE, useDingbats = FALSE)
   
- # plot(c(1,35), c(33,1), ylab = '', xlab = '', xaxt = 'n', yaxt = 'n', bty = 'n', col = 'white')
-#  rasterImage(he.image, 1, 1, 35, 33)
-#  par(new = T)
-  plot(cluster.int[,1], -cluster.int[,2], cex = 0.35, ylim = c(-35, -1), xlim = c(1, 33), pch = 19, col = mycol, xlab='', ylab='', xaxt='n', yaxt='n', axes=FALSE)
+  # plot(c(1,35), c(33,1), ylab = '', xlab = '', xaxt = 'n', yaxt = 'n', bty = 'n', col = 'white')
+  #  rasterImage(he.image, 1, 1, 35, 33)
+  #  par(new = T)
+  plot(as.numeric(df.nona[,1]), -as.numeric(df.nona[,2]), cex = 0.00005, ylim = c(-max(df.nona[,2]), -min(df.nona[,2])), xlim = c(min(df.nona[,1]), max(df.nona[,1])), pch = 19, xlab='', ylab='', col = df.nona[, 3], xaxt='n', yaxt='n', axes=FALSE)
+
+  dev.off()
   
+  out.file = paste(sample_, '_clusters_interpolated_', alg, '.png', sep = '')
+  png(paste0(plot.folder, '/png/', out.file))
+  
+  # plot(c(1,35), c(33,1), ylab = '', xlab = '', xaxt = 'n', yaxt = 'n', bty = 'n', col = 'white')
+  #  rasterImage(he.image, 1, 1, 35, 33)
+  #  par(new = T)
+  plot(as.numeric(df.nona[,1]), -as.numeric(df.nona[,2]), cex = 0.00005, ylim = c(-max(df.nona[,2]), -min(df.nona[,2])), xlim = c(min(df.nona[,1]), max(df.nona[,1])), pch = 19, xlab='', ylab='', col = df.nona[, 3], xaxt='n', yaxt='n', axes=FALSE)
+  legend(-1, 0, c(sort(unique(clusters))), col = cluster.colors.matrix[sort(unique(clusters))] , pch = 19, xpd = TRUE)
   dev.off()
 
-  }
-
+}

@@ -7,9 +7,9 @@ from src.classes import *
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('-f', '--st_h5ad_folder', type=str,
-                        default='../results/st_pp/stdata_h5ad/')
+                        default='../data/st_data_pre_processed/stdata_h5ad/')
     parser.add_argument('-c', '--cluster_folder', type=str, help='file with ST samples',
-                        default='../results/Batch_corrections/seurat/TX/')
+                        default='../results/Batch_corrections/desc/TX/')
     # parser.add_argument('-o', '--output', type=str, help='folder to be used as an output',
     #                     default='/home/jana/Dropbox (Bjorklund Lab)/MNM projects/Spatial transcriptomics project/Data analysis/Complete_ST_pipeline/results/st_pp/')
     parser.add_argument('--mode', default='client')

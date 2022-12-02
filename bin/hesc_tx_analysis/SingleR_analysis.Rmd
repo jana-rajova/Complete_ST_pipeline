@@ -32,13 +32,14 @@ suppressMessages(library(scuttle))
 ```{r load Seurat object}
 
 load('../../data/hesc_tx/hESC_TX_seurat.Rdata')
+load('../../data/hesc_tx/filtered_seurat_object.Rdata')
 ```
 
 ```{r create single cell experiment}
 # name of the folder with the matrices themselves
 # add the path to single cell data 
-sc.ref.path <- "/media/Dropbox/MNM projects/Spatial transcriptomics project/Data analysis/Complete_ST_pipeline/data/stereoscope_reference/single_cell_data/L5_101022/"
-sc.ref.name <- "L5_CTX_M_STR_description_selection_2000_astmerged"
+sc.ref.path <- "/media/Dropbox/MNM projects/Spatial transcriptomics project/Data analysis/Complete_ST_pipeline/data/sc_data/mouse_sc/L5_301122/"
+sc.ref.name <- "L5_CTX_M_STR_CNS_description_selection_1000_astmerged_Tax4"
 sc.ref.folder <- paste0(sc.ref.path, sc.ref.name, '_decomposed_reference/')
 # find files in the folder
 mat.file.ref <- grep("cnt", list.files(sc.ref.folder), value=TRUE)
@@ -48,15 +49,19 @@ cell.attr.file.ref <- grep("mta", list.files(sc.ref.folder), value=TRUE)
 cell.attr.ref <- read.delim(paste0(sc.ref.folder, cell.attr.file.ref), header=TRUE, row.names=1, check.names=FALSE, sep = ',')
 mat.ref <- read.delim(paste0(sc.ref.folder, mat.file.ref), header=TRUE, row.names=1, check.names=FALSE, sep = ',')
 
-sce.ref <- SingleCellExperiment(assays = list(counts = t(mat.ref)), colData=cell.attr.ref)
-sce.ref <- scuttle::logNormCounts(sce.ref)
+sce.ref = CreateSeuratObject(counts=t(mat.ref), meta.data=cell.attr.ref, assay='RNA', project='scRNAseq_SingleR')
+sce.ref = SCTransform(sce.ref, vars.to.regress='ChipID')
+sce.ref = as.SingleCellExperiment(sce.ref)
+# sce.ref <- SingleCellExperiment(assays = list(counts = t(mat.ref)), colData=cell.attr.ref)
+# sce.ref <- scuttle::logNormCounts(sce.ref)
 sce.ref
 save(sc.ref.path, file=paste0(sc.ref.path, sc.ref.name, '_SingleCellExperiment.R'))
 #mat.t <- t(mat.t)
 
-expr.TX <- new@assays$RNA@data
-sce.TX <- SingleCellExperiment(assays = list(counts = expr.TX))
-sce.TX <- scuttle::logNormCounts(sce.TX)
+
+sce.TX = SCTransform(dataA, vars.to.regress='Sample') 
+sce.TX = as.SingleCellExperiment(sce.TX)
+# sce.TX <- scuttle::logNormCounts(sce.TX)
 sce.TX
 #save(sce.TX, file="SingleR_transplant_single_cell_experiment.R")
 ```
@@ -69,15 +74,17 @@ sce.TX
 table(sce.ref$Celltype_assigned)
 
 # run SingleR instance
-pred.wilcox.lin.2000.astmerged <- SingleR(test=sce.TX, ref=sce.ref, labels=sce.ref$Celltype_assigned, de.method="wilcox")
+pred.wilcox.lin.1000.astmerged <- SingleR(test=sce.TX, ref=sce.ref, labels=sce.ref$Celltype_assigned, de.method="wilcox")
 
 # show the results
-sort(table(pred.wilcox.lin.2000.astmerged$labels))
-new@meta.data$SingleR <- pred.wilcox.lin.2000.astmerged$labels  
+sort(table(pred.wilcox.lin.1000.astmerged$labels))
+dataA@meta.data$SingleR <- pred.wilcox.lin.1000.astmerged$labels 
+# dataA@meta.data$SingleR = gsub('Inhibitory neurons, midbrain', 'Peptidergic neurons; mouse', dataA@meta.data$SingleR)
+# colnames(pred.wilcox.lin.1000.astmerged$scores) =  gsub('Inhibitory neurons, midbrain', 'Peptidergic neurons; mouse', colnames(pred.wilcox.lin.1000.astmerged$scores))
 
 # write out the resulting dataframe
-pred.file <- '/media/Dropbox/MNM projects/Spatial transcriptomics project/Data analysis/Complete_ST_pipeline/results/SingleR/pred.wilcox.lin.2000.astmerged.R'
-save(pred.wilcox.lin.2000.astmerged, file=pred.file)
+pred.file <- '/media/Dropbox/MNM projects/Spatial transcriptomics project/Data analysis/Complete_ST_pipeline/results/SingleR/pred.wilcox.lin.1000.astmerged.R'
+save(pred.wilcox.lin.1000.astmerged, file=pred.file)
 load(pred.file)
 
 UMAP_embedding <- as.data.frame(Embeddings(new@reductions$umap))
@@ -88,4 +95,48 @@ hESC.TX.df <- data.frame("CellID" = new@assays$RNA@counts@Dimnames[2],
                          "umap2" = UMAP_embedding$UMAP_2)
 
 write.table(hESC.TX.df, file=paste0('../../results/SingleR/hESC_TX_sc_SingleR_analysis', sc.ref.name, '.tsv'), sep='\t', quote=FALSE)
+```
+
+```{r}
+ct.order = c('Dopaminergic neurons; mouse', 'Peptidergic neurons; mouse', "Telencephalon inhibitory interneurons", "Cholinergic interneurons; mouse","Di- and mesencephalon inhibitory neurons", 'Cortical projection neurons; mouse','Immune cells; mouse', 'Non-glutamatergic neuroblasts', 'Vascular; mouse', 'Vascular leptomeningeal cells; mouse', 'Dentate gyrus radial glia-like cells', 'Subventricular zone radial glia-like cells', 'Astrocytes; mouse')
+df.cluster = data.frame(new$seurat_clusters)
+row.names(df.cluster) = names(new@active.ident)
+df.cluster = df.cluster[names(dataA@active.ident), ]
+annot.df = data.frame(dataA$SingleR, df.cluster, row.names = names(dataA@active.ident))
+colnames(annot.df) = c('label', 'cluster')
+
+csr = t(data.frame(pred.wilcox.lin.1000.astmerged$scores))
+rownames(csr) = colnames(pred.wilcox.lin.1000.astmerged@listData[["scores"]])
+colnames(csr) = names(dataA@active.ident)
+
+
+annot.df$label = factor(annot.df$label, levels = c('Dopaminergic neurons; mouse', 'Peptidergic neurons; mouse', "Telencephalon inhibitory interneurons", "Cholinergic interneurons; mouse","Di- and mesencephalon inhibitory neurons", 'Cortical projection neurons; mouse','Immune cells; mouse', 'Non-glutamatergic neuroblasts', 'Vascular; mouse', 'Vascular leptomeningeal cells; mouse', 'Dentate gyrus radial glia-like cells', 'Subventricular zone radial glia-like cells', 'Astrocytes; mouse'))
+annot.df = annot.df[order(annot.df$label),]
+
+csr = csr[, rownames(annot.df)]
+csr = csr[rownames(csr) %in% ct.order, ]
+csr = as.data.frame(csr[ct.order, ])
+annoCol = list(label = c('Dopaminergic neurons; mouse' = 'dodgerblue2',
+                       'Peptidergic neurons; mouse' = 'cornflowerblue',
+                       'Telencephalon inhibitory interneurons' = 'dodgerblue4',
+                       'Cholinergic interneurons; mouse' = 'darkturquoise',
+                       'Di- and mesencephalon inhibitory neurons' = 'darkslategray2',
+                       'Cortical projection neurons; mouse' = 'lightcyan1',
+                       'Immune cells; mouse' = 'magenta',
+                       'Non-glutamatergic neuroblasts' = 'olivedrab1',
+                       'Vascular; mouse' = 'mediumvioletred',
+                       'Vascular leptomeningeal cells; mouse' = 'red3',
+                       'Dentate gyrus radial glia-like cells' = 'gold',
+                       'Subventricular zone radial glia-like cells' = 'darkgoldenrod1',
+                       'Astrocytes; mouse' = 'lightgoldenrod1'))
+annoCol = append(list(cluster = c('0' = 'yellow',
+                                 '1' = 'violetred1',
+                                 '2' = 'slateblue1',
+                                 '3' = 'wheat1'
+                                )), annoCol)
+
+annoCol = append(list(label = annoCol$label[unique(annot.df$label)]), list(cluster = annoCol$cluster[unique(annot.df$cluster)]))
+
+
+pheatmap(csr, annotation_col = annot.df, annotation_colors = annoCol, cluster_rows = FALSE, cluster_cols = FALSE, labels_col = FALSE )
 ```

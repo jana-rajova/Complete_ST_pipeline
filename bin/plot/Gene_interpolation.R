@@ -8,12 +8,13 @@ library(scales)
 plan(multisession)
 
 Image.locations <- '/media/Dropbox/MNM projects/Spatial transcriptomics project/Data analysis/Images_rev1/'
-interpol.mask.location <- '/media/Dropbox/MNM projects/Spatial transcriptomics project/Data analysis/Complete_ST_pipeline/ST_feature_analysis/data/ST_interpolation_masks/'
+interpol.mask.location <- '/media/Dropbox/MNM projects/Spatial transcriptomics project/Data analysis/Complete_ST_pipeline/data/ST_interpolation_masks/'
 
-gene_folder <- '/media/Dropbox/MNM projects/Spatial transcriptomics project/Data analysis/Complete_ST_pipeline/ST_feature_analysis/data/ST_files/ST_matrix_STARsolo_correct_PetterREFs_Multimap/stdata/'
+gene_folder <- '/media/Dropbox/MNM projects/Spatial transcriptomics project/Data analysis/Complete_ST_pipeline/data/st_data_pre_processed/stdata_tsv/'
 
 
-samples <- c('ST3_E1', 'ST1_C1', 'ST3_E2', 'ST1_D2', 'CN56_D2', 'CN56_E1', 'CN56_E2', 'ST3_C2', 'ST3_D1', 'ST3_D2', 'ST1_C2', 'CN57_E1', 'CN57_E2')
+samples <- c('ST3_E1', 'ST1_C1', 'ST3_E2', 'ST1_D2','CN56_C2', 'CN56_D2', 'CN56_E1', 'CN56_E2', 'ST3_C2', 'ST3_D1', 'ST3_D2', 'ST1_C2', 'CN57_E1', 'CN57_E2')
+samples = c('CN53_C1')
 for (sample_ in samples) {
   #samples <-  c('ST3_E1')
   if (file.exists(paste(Image.locations,sample_,'_HE.png', sep=""))){
@@ -23,7 +24,7 @@ for (sample_ in samples) {
   }
   bw.image <- readJPEG(paste(Image.locations,sample_,'_mask.jpg', sep=""))
   st.file <- paste0(gene_folder, sample_, '_stdata.tsv')
-  st.df <- t(read.table(st.file, sep = '\t', row.names = 1, header = TRUE, check.names = FALSE))
+  st.df <- read.table(st.file, sep = '\t', row.names = 1, header = TRUE, check.names = FALSE)
   print(sample_)
   # B. Covert to binary format, play around with limit until you are satisfied
   # with the binary dots you get.
@@ -43,7 +44,6 @@ for (sample_ in samples) {
   coords = unlist(strsplit(substring(coords, 2), "_"))
   coords <- as.numeric(coords)
   coords = t(matrix(coords,nrow = 2))
-  img.2.size <- round(50000*(length(coords)/2/1000*(1.1)), 0)
   
   max.x = max(coords[,1]) + 0.5
   min.x = min(coords[,1]) - 0.5
@@ -60,8 +60,11 @@ for (sample_ in samples) {
   # than 50,000 (if the plot of tissue morphology looks OK?).
   
   limit = 0.2
+  multiplier = 150
   
   set.seed(1)
+  
+  img.2.size <- as.integer(length(coords[,1]) * multiplier)
   
   img.2 = img[sample(nrow(img),size=img.2.size,replace=FALSE),]
   
@@ -129,10 +132,10 @@ for (sample_ in samples) {
   # a gene you want to display and a color scale (for the expression heatmap).
   
   # gene = 'MBP'
-  genes <- read.table('/media/Dropbox/MNM projects/Spatial transcriptomics project/Data analysis/Complete_ST_pipeline/ST_feature_analysis/data/geneList.txt', sep = '\n')$V1
+  genes <- read.table('/media/Dropbox/MNM projects/Spatial transcriptomics project/Data analysis/Complete_ST_pipeline/data/geneList.txt', sep = '\n')$V1
   print('Plotting distribution for:')
   for (gene in genes) {
-    if (gene %in% colnames(st.df)){
+    # if (gene %in% colnames(st.df)){
       print(gene)
       exp.col = c('blue', 'yellow', 'red')
       
@@ -141,7 +144,11 @@ for (sample_ in samples) {
       x = as.numeric(colnames(section.input)[1])
       y = as.numeric(colnames(section.input)[2])
       
-      gene.exp <- as.matrix(st.df[, gene])
+      if (!(gene %in% colnames(st.df))){
+        st.df[, gene] = 0
+      } else {
+        gene.exp <- as.matrix(st.df[, gene])
+      }
       rownames(gene.exp) <- rownames(st.df)
       if (!is.na((max(gene.exp[,1])))) {
         coords = rownames(gene.exp)
@@ -172,7 +179,10 @@ for (sample_ in samples) {
         
         breaks = seq(from = (min - 0.00000001), to = max, length = 1001)
         rb.pal = colorRampPalette(exp.col)
+        
         dat.col = rb.pal(1000)[as.numeric(cut(section.value[,3], breaks = breaks))]
+        if (max == 0 ){dat.col = rep(c('blue'), length(dat.col))}
+        
         dat.col[is.na(dat.col)] = 'grey'
         setwd(gene_folder)
         
@@ -201,10 +211,10 @@ for (sample_ in samples) {
         
         dev.off()
       }
-    } else {
-      print(paste(gene, 'not found :('))
-    }
-  }   
+    # } else {
+    #   print(paste(gene, 'not found :('))
+    # }
+  }
 }
 
 

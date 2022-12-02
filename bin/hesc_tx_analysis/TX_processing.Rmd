@@ -26,7 +26,7 @@ suppressMessages(library(dplyr))
 Load all the seurat objects per sample.
 
 ```{r load}
-indir <- "../data/"
+indir <- "../../data/hesc_tx/"
 rats <- c("rat11","rat39","rat45")
 # load data
 alldata <- list()
@@ -222,7 +222,8 @@ Read in the mouse brain atlas data and get a list of marker genes to calculate c
 ```{r atlas_data, warning=FALSE}
 suppressMessages(library(loomR))
 # to load loomR - need to first unload ‘dplyr’, ‘httr’?
-lfile <- connect(filename = "../data/l5_all.agg.loom", mode = "r", skip.validate = T)
+lfile <- connect(filename = "../../data/hesc_tx/l5_all.agg.loom", mode = "r", skip.validate = T)
+# lfile <- connect(filename = "../../data/hesc_tx/L5_011222/L5_agg_CTX_M_STR_CNS_selection_1000_astmerged_Tax4.loom", mode = "r", skip.validate = T)
 exprs <- lfile[["matrix"]][,]
 exprs <- t(exprs)
 names <- lfile[["col_attrs"]]$names
@@ -241,6 +242,10 @@ M <- Reduce(cbind,M)
 rownames(M) <- clust
 colnames(M) <- names
 M <- data.frame(M)
+
+
+# check later!
+M = M[M$ClusterName %in% selected.clusters,]
 # extract all their marker genes
 markersA <- unique(unlist(sapply(as.vector(M$MarkerGenes), strsplit, " ")))
 #length(markersA)
@@ -252,9 +257,9 @@ markers2 <- unique(markers[markers$p_val_adj<0.001,"gene"])
 Translate human to mouse genes.
 
 ```{r, orthologs}
-transfile <- "../data/human_gene_translations.txt"
+transfile <- "../../data/hesc_tx/human_gene_translations.txt"
 # get ensembl ids for the human genes
-gene.info <- read.table("../data/gene_annotation.tsv", sep="\t", quote='', header=T)
+gene.info <- read.table("../../data/hesc_tx/gene_annotation.tsv", sep="\t", quote='', header=T)
 human.ensembl <- gene.info$ensembl_gene_id
 if (file.exists(transfile)){
   gene.translation <- read.table(transfile)
@@ -309,6 +314,7 @@ clust2cell <- split(1:ncol(data.integrated), data.integrated@active.ident)
 exprsC <- Reduce(cbind,lapply(clust2cell, function(x) rowMeans(exprR[,x])))
 colnames(exprsC) <- names(clust2cell)
 exprsA <- log2(exprs[match(gene.translation$Gene.name.1, rownames(exprs)),]+1)
+exprsA = exprsA[, selected.clusters]
 ```
 
 Calculate correlations
@@ -464,7 +470,10 @@ ggplot(meta, aes(x=Rat, fill=integrated_snn_res.0.05)) + geom_bar(position = "fi
 ```{r atlas_data_filtered to CSN only, warning=FALSE}
 suppressMessages(library(loomR))
 # to load loomR - need to first unload ‘dplyr’, ‘httr’?
-lfile <- connect(filename = "../data/l5_all.agg.loom", mode = "r", skip.validate = T)
+# lfile <- connect(filename = "../data/l5_all.agg.loom", mode = "r", skip.validate = T)
+loom.filt = '../../data/hesc_tx/L5_011222/L5_agg_CTX_M_STR_CNS_selection_1000_astmerged_Tax4.loom'
+lfile <- connect(filename = loom.filt, mode = "r", skip.validate = T)
+
 exprs <- lfile[["matrix"]][,]
 exprs <- t(exprs)
 names <- lfile[["col_attrs"]]$names
@@ -483,24 +492,24 @@ M <- Reduce(cbind,M)
 rownames(M) <- clust
 colnames(M) <- names
 M <- data.frame(M)
-M.filtered <- filter(M, Region == "CNS"
-       | Region == "Cortex" 
-       | Region == "Hippocampus,Cortex"
-       | Region == "Midbrain ventral"
-       | Region == "Striatum dorsal"
-       | Region == "Striatum ventral"
-       | Region == "Striatum dorsal,Striatum ventral"
-       | Region == "Striatum dorsal, Striatum ventral, Dentate gyrus"
-       | Region == "Striatum dorsal, Striatum ventral,Amygdala"
-       | Region == "Striatum dorsal, Striatum ventral"
-       | Region == "Midbrain dorsal,Midbrain ventral"
-       | Region == "Telencephalon"
-       | Region == "Hypothalamus,Thalamus,Midbrain dorsal,Midbrain ventral,Pons,Medulla,Spinal cord"
-       )
-exprs.filtered <- exprs[, M.filtered$ClusterName]
+# M.filtered <- filter(M, Region == "CNS"
+#        | Region == "Cortex" 
+#        | Region == "Hippocampus,Cortex"
+#        | Region == "Midbrain ventral"
+#        | Region == "Striatum dorsal"
+#        | Region == "Striatum ventral"
+#        | Region == "Striatum dorsal,Striatum ventral"
+#        | Region == "Striatum dorsal, Striatum ventral, Dentate gyrus"
+#        | Region == "Striatum dorsal, Striatum ventral,Amygdala"
+#        | Region == "Striatum dorsal, Striatum ventral"
+#        | Region == "Midbrain dorsal,Midbrain ventral"
+#        | Region == "Telencephalon"
+#        | Region == "Hypothalamus,Thalamus,Midbrain dorsal,Midbrain ventral,Pons,Medulla,Spinal cord"
+#        )
+# exprs.filtered <- exprs[, M$ClusterName]
 
 # extract all their marker genes
-markersA <- unique(unlist(sapply(as.vector(M.filtered$MarkerGenes), strsplit, " ")))
+  markersA <- unique(unlist(sapply(as.vector(M$MarkerGenes), strsplit, " ")))
 #length(markersA)
 # and our marker genes
 markers2 <- unique(markers[markers$p_val_adj<0.001,"gene"])
@@ -509,9 +518,9 @@ markers2 <- unique(markers[markers$p_val_adj<0.001,"gene"])
 
 
 ```{r, orthologs}
-transfile <- "../data/human_gene_translations.txt"
+transfile <- "../../data/hesc_tx/human_gene_translations.txt"
 # get ensembl ids for the human genes
-gene.info <- read.table("../data/gene_annotation.tsv", sep="\t", quote='', header=T)
+gene.info <- read.table("../../data/hesc_tx/gene_annotation.tsv", sep="\t", quote='', header=T)
 human.ensembl <- gene.info$ensembl_gene_id
 if (file.exists(transfile)){
   gene.translation <- read.table(transfile)
@@ -566,27 +575,28 @@ clust2cell <- split(1:ncol(data.integrated), data.integrated@active.ident)
 exprsC <- Reduce(cbind,lapply(clust2cell, function(x) rowMeans(exprR[,x])))
 colnames(exprsC) <- names(clust2cell)
 exprsA <- log2(exprs.filtered[match(gene.translation$Gene.name.1, rownames(exprs.filtered)),]+1)
+# rownames(exprsA) = toupper(rownames(exprsA))
 ```
 
 Calculate correlations
 
 ```{r, fig.width=10, fig.height=6}
 cC <- cor(exprsC,exprsA, method = "spearman")
-include.annot <- c("TaxonomyRank1","TaxonomyRank2","TaxonomyRank3","TaxonomyRank4", "ClusterName")
-colorsC <- M.filtered[,include.annot]
+include.annot <- c("TaxonomyRank1","TaxonomyRank2","TaxonomyRank3","TaxonomyRank4", "ClusterName", 'Celltype_assigned')
+colorsC <- M[,include.annot]
   
 # keep order for atlas cells by their Taxonomy ranks
-o <- order(M.filtered$TaxonomyRank1, M.filtered$TaxonomyRank2, M.filtered$TaxonomyRank3, M.filtered$ClusterName)
+o <- order(M$TaxonomyRank1, M$TaxonomyRank2, M$TaxonomyRank3, M$ClusterName)
 pheatmap(cC[,o], annotation_col = colorsC[,1:4], cluster_cols = F, show_colnames = F, fontsize = 6) 
 ```
 ```{r, fig.width=10, fig.height=6}
 cC <- cor(exprsC,exprsA, method = "spearman")
 include.annot <- c("TaxonomyRank2", "Description")
-colorsC <- M.filtered[,include.annot]
+colorsC <- M[,include.annot]
 colorsCc <- colorsC
   
 # keep order for atlas cells by their Taxonomy ranks
-o <- order(M.filtered$TaxonomyRank1, M.filtered$TaxonomyRank2, M.filtered$TaxonomyRank3, M.filtered$Description)
+o <- order(M$TaxonomyRank1, M$TaxonomyRank2, M$TaxonomyRank3, M$Description)
 pheatmap(cC[,o], annotation_col = colorsC[,1:2], cluster_cols = F, show_colnames = F, fontsize = 6) 
 ```
 

@@ -1,2 +1,5 @@
 results/
 data/
+bin/stereoscope
+bin/non-manuscript_scripts
+bin/hesc_tx_analysis/data/
